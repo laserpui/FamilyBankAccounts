@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#e5ffff">
+  <meta name="apps-script-api-deployment-id" content="">
+  <meta name="google-oauth-client-id" content="">
+  <script src="https://accounts.google.com/gsi/client" async></script>
+  <title>Family Bank Manager</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17253a;
+      --muted: #475970;
+      --line: #c8d6e1;
+      --surface: rgba(255, 255, 255, .75);
+      --glass: rgba(255, 255, 255, .56);
+      --glass-border: rgba(255, 255, 255, .94);
+      --brand: #164b56;
+      --brand-2: #11616b;
+      --mint: #d9f4f1;
+      --mint-2: #ebf8f7;
+      --amber: #a65a12;
+      --amber-bg: #fff3e3;
+      --danger: #b42318;
+      --danger-bg: #fff0ee;
+      --shadow: 0 14px 36px rgba(39, 61, 92, .09), 0 2px 5px rgba(39, 61, 92, .04);
+      --radius: 1.5rem;
+      --sidebar: 15rem;
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: linear-gradient(125deg, #e5ffff 0%, #ffffe6 51%, #ffe6ff 100%) fixed;
+      color: var(--ink);
+      font-family: "Noto Sans Thai", Sarabun, "Leelawadee UI", Tahoma, system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 2px solid var(--brand-2);
+      outline-offset: 2px;
+    }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+    .icon { width: 20px; height: 20px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    .app-shell { min-height: 100vh; }
+    .sidebar {
+      position: fixed; inset: 0 auto 0 0; z-index: 20;
+      width: var(--sidebar); padding: 28px 20px;
+      background: var(--surface); color: var(--ink); border-right: 1px solid var(--glass-border);
+      backdrop-filter: blur(20px);
+      overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 0 10px 28px; }
+    .brand-mark {
+      width: 42px; height: 42px; border-radius: 13px;
+      display: grid; place-items: center; color: var(--brand);
+      background: var(--mint); box-shadow: inset 0 0 0 1px rgba(255,255,255,.75);
+    }
+    .brand-mark .icon { width: 24px; height: 24px; stroke-width: 2; }
+    .brand-name { font-weight: 800; line-height: 1.15; letter-spacing: -.01em; }
+    .brand-sub { color: var(--muted); font-size: .82rem; margin-top: 3px; }
+    .nav-list { display: grid; gap: 7px; }
+    .nav-btn {
+      width: 100%; border: 0; border-radius: 13px; padding: 13px 14px;
+      color: var(--muted); background: transparent;
+      display: flex; align-items: center; gap: 12px; text-align: left;
+      font-weight: 650; transition: .2s ease;
+    }
+    .nav-btn:hover { background: var(--mint-2); color: var(--brand); }
+    .nav-btn.active { background: var(--mint); color: var(--brand); box-shadow: inset 0 0 0 1px #bddedc; }
+    .sidebar-note {
+      margin-top: auto; padding: 16px; border-radius: 16px;
+      background: var(--surface); border: 1px solid var(--line); color: var(--muted); font-size: .82rem;
+    }
+    .sidebar-note strong { color: var(--ink); display: block; margin-bottom: 3px; font-size: .88rem; }
+
+    .main { margin-left: var(--sidebar); min-height: 100vh; padding: 36px clamp(24px, 3.6vw, 58px) 48px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: 18px; max-width: 1320px; margin: 0 auto 28px; }
+    .eyebrow { margin: 0 0 3px; color: var(--brand-2); font-size: .82rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(1.65rem, 3vw, 2.35rem); line-height: 1.25; letter-spacing: -.025em; overflow-wrap: anywhere; }
+    .date { color: var(--muted); margin-top: 5px; font-size: .9rem; }
+    .date .icon { width: 16px; height: 16px; vertical-align: -.15em; margin-inline-end: 5px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .avatar { width: 42px; height: 42px; border-radius: 50%; background: var(--mint); color: var(--brand); display: grid; place-items: center; font-weight: 800; }
+    .btn {
+      min-height: 44px; border: 1px solid transparent; border-radius: 13px; padding: 10px 16px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      color: var(--ink); background: #fff; font-weight: 750; transition: .18s ease;
+    }
+    .btn:active:not(:disabled) { transform: scale(.98); }
+    .btn-primary { color: #fff; background: var(--brand); box-shadow: 0 8px 20px rgba(20,61,43,.18); }
+    .btn-primary:hover { background: var(--brand-2); }
+    .btn-secondary { border-color: var(--line); background: var(--surface); }
+    .btn-ghost { padding-inline: 10px; background: transparent; color: var(--muted); }
+    .btn-danger { color: var(--danger); background: var(--danger-bg); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+    .content { max-width: 1320px; margin: 0 auto; }
+
+    .hero {
+      position: relative; overflow: hidden; border-radius: var(--radius); padding: clamp(22px, 3vw, 40px);
+      color: var(--ink);
+      background: linear-gradient(112deg, rgba(255,255,255,.91), rgba(224,249,249,.74) 58%, rgba(237,224,255,.72));
+      border: 1px solid var(--glass-border); backdrop-filter: blur(18px);
+      box-shadow: var(--shadow); display: flex; justify-content: space-between; align-items: center; gap: 22px;
+    }
+    .hero::after {
+      content: ""; position: absolute; width: 320px; height: 320px; right: -64px; top: -168px;
+      border-radius: 50%; border: 38px solid rgba(255,255,255,.37); pointer-events: none;
+    }
+    .hero-copy { position: relative; z-index: 1; max-width: 700px; }
+    .hero h2 { margin: 0 0 8px; font-size: clamp(1.25rem, 2.5vw, 1.9rem); line-height: 1.35; }
+    .hero p { margin: 0; color: var(--muted); }
+    .hero .btn { position: relative; z-index: 1; flex: 0 0 auto; background: var(--brand); color: #fff; }
+    .hero .btn:hover { background: var(--brand-2); }
+
+    .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; margin: 20px 0 26px; }
+    .stat-card { border-radius: var(--radius); padding: clamp(12px, 2vw, 22px); }
+    .stat-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); font-size: .87rem; font-weight: 650; }
+    .stat-icon { width: 37px; height: 37px; border-radius: 11px; display: grid; place-items: center; color: var(--brand-2); background: var(--mint-2); }
+    .stat-icon .icon { width: 18px; height: 18px; }
+    .stat-card:nth-child(2) .stat-icon { color: #604584; background: #f0e9fb; }
+    .stat-card:nth-child(3) .stat-icon { color: #63521c; background: #fcf2ce; }
+    .stat-value { margin-top: 12px; font-size: 1.8rem; line-height: 1; font-weight: 850; letter-spacing: -.03em; }
+
+    .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 15px; }
+    .section-head h2 { margin: 0; font-size: 1.25rem; }
+    .result-count { margin: 3px 0 0; color: var(--muted); font-size: .88rem; }
+    .toolbar { display: grid; grid-template-columns: minmax(260px, 1.8fr) repeat(2, minmax(170px, .8fr)); gap: 10px; margin-bottom: 17px; }
+    .control-wrap { position: relative; }
+    .control-icon { position: absolute; left: 14px; top: 50%; translate: 0 -50%; color: #7a867e; pointer-events: none; }
+    .control {
+      width: 100%; min-width: 0; min-height: 48px; border: 1px solid var(--line); border-radius: 13px;
+      padding: 10px 14px; color: var(--ink); background-color: var(--surface); transition: .16s ease;
+    }
+    .control:hover { border-color: #93afb9; }
+    .control:focus { background-color: #fff; }
+    .control::placeholder { color: var(--muted); opacity: 1; }
+    .control-wrap .control { padding-left: 44px; }
+    .bank-select-wrap { position: relative; }
+    .bank-select-wrap .control { padding-left: 52px; }
+    .bank-select-badge {
+      position: absolute; z-index: 1; left: 11px; top: 50%; translate: 0 -50%;
+      width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+      color: #fff; background: #87938b; font-size: .65rem; font-weight: 900;
+      letter-spacing: -.02em; pointer-events: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.3);
+    }
+    select.control {
+      appearance: none; padding-right: 38px;
+      background-image: linear-gradient(45deg, transparent 50%, #68756d 50%), linear-gradient(135deg, #68756d 50%, transparent 50%);
+      background-position: calc(100% - 19px) 20px, calc(100% - 14px) 20px;
+      background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
+    }
+
+    .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .account-card { min-width: 0; display: flex; flex-direction: column; border-radius: var(--radius); padding: clamp(18px, 2.2vw, 26px); }
+    .stat-card, .account-card, .form-card, .skeleton-card {
+      background: var(--glass); border: 1px solid var(--glass-border);
+      backdrop-filter: blur(16px); box-shadow: var(--shadow);
+    }
+    .stat-card, .account-card { transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+    @media (hover: hover) and (pointer: fine) {
+      .stat-card:hover, .account-card:hover { transform: translateY(-3px); box-shadow: 0 18px 36px rgba(39,61,92,.14); border-color: #d5e6eb; }
+      .btn:hover:not(:disabled) { translate: 0 -1px; }
+    }
+    .account-top { display: flex; justify-content: space-between; gap: 14px; }
+    .bank-lockup { display: flex; gap: 13px; min-width: 0; }
+    .bank-logo { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; flex: 0 0 auto; font-size: 1.05rem; font-weight: 900; }
+    .account-title { margin: 0; font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }
+    .bank-name { display: block; margin: 3px 0 0; font-size: .9rem; line-height: 1.35; overflow-wrap: anywhere; }
+    .account-owner { margin: 5px 0 0; color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+    .account-number-wrap { margin: 18px 0 14px; padding: 15px 16px; border-radius: 16px; background: rgba(232, 242, 249, .72); border: 1px solid var(--glass-border); }
+    .field-label { color: var(--muted); font-size: .76rem; font-weight: 700; }
+    .account-number { margin-top: 3px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 1.12rem; font-weight: 750; letter-spacing: .035em; overflow-wrap: anywhere; }
+    .account-meta { display: flex; flex-wrap: wrap; gap: 7px; min-height: 30px; }
+    .chip { border-radius: 8px; padding: 4px 9px; color: var(--muted); background: #e8eef6; font-size: .82rem; }
+    .note { color: var(--muted); margin: 11px 0 14px; min-height: 24px; font-size: .9rem; overflow-wrap: anywhere; }
+    .card-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-top: 15px; margin-top: auto; border-top: 1px solid var(--line); }
+    .card-actions .btn { min-height: 44px; border-radius: 11px; padding: 8px; font-size: .875rem; }
+    .card-actions .copy-all { color: var(--brand); border-color: #bed8c7; background: var(--mint-2); }
+    .card-footer { margin-top: 8px; display: flex; justify-content: flex-end; }
+    .edit-btn { border: 0; border-radius: 10px; background: transparent; color: var(--muted); min-height: 44px; padding: 6px 9px; display: inline-flex; align-items: center; gap: 5px; font-size: .875rem; font-weight: 700; transition: color .2s ease, background-color .2s ease; }
+    .edit-btn:hover { color: var(--brand); background: var(--mint-2); }
+
+    .state-panel { display: none; grid-column: 1 / -1; min-height: 300px; border: 1px dashed #cdd8d0; border-radius: var(--radius); place-items: center; text-align: center; padding: 38px; background: rgba(255,255,255,.65); }
+    .state-panel.show { display: grid; }
+    .state-graphic { width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 20px; background: var(--mint); color: var(--brand); display: grid; place-items: center; }
+    .state-graphic .icon { width: 29px; height: 29px; }
+    .state-panel h3 { margin: 0 0 5px; }
+    .state-panel p { color: var(--muted); margin: 0 0 18px; }
+    .skeleton-card { border-radius: var(--radius); padding: 21px; }
+    .skeleton { border-radius: 8px; background: linear-gradient(90deg, #edf1ee 25%, #f7f9f7 50%, #edf1ee 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    .view { display: none; }
+    .view.active { display: block; }
+    .form-page { max-width: 850px; }
+    .back-link { border: 0; background: transparent; padding: 0; margin-bottom: 15px; color: var(--brand-2); display: inline-flex; align-items: center; gap: 6px; font-weight: 750; }
+    .form-card { border-radius: var(--radius); padding: clamp(20px, 3vw, 34px); }
+    .form-card h2 { margin: 0; font-size: 1.35rem; }
+    .form-intro { margin: 5px 0 22px; color: var(--muted); }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px; }
+    .form-field.full { grid-column: 1 / -1; }
+    .form-field label { display: block; margin-bottom: 6px; font-size: .88rem; font-weight: 750; }
+    .required { color: var(--danger); }
+    textarea.control { min-height: 96px; resize: vertical; }
+    .error-text { display: none; margin: 5px 0 0; color: var(--danger); font-size: .78rem; }
+    .form-field.invalid .control { border-color: #d66a61; background: #fffafa; }
+    .form-field.invalid .error-text { display: block; }
+    .privacy-note { margin-top: 18px; border-radius: 13px; padding: 13px 15px; background: var(--amber-bg); color: #74400f; font-size: .83rem; display: flex; gap: 10px; }
+    .form-actions { display: flex; justify-content: space-between; gap: 12px; padding-top: 22px; margin-top: 22px; border-top: 1px solid var(--line); }
+    .form-actions-right { display: flex; gap: 10px; margin-left: auto; }
+
+    .bottom-nav { display: none; }
+    .toast-region { position: fixed; z-index: 100; right: 22px; bottom: 22px; display: grid; gap: 9px; pointer-events: none; }
+    .toast { min-width: 260px; max-width: 390px; padding: 13px 15px; border-radius: 13px; color: #fff; background: #183d2b; box-shadow: 0 12px 36px rgba(0,0,0,.18); display: flex; align-items: center; gap: 9px; animation: toast-in .25s ease both; }
+    .toast.error { background: #8f271f; }
+    @keyframes toast-in { from { opacity: 0; translate: 0 10px; } }
+
+    dialog { border: 1px solid var(--glass-border); border-radius: var(--radius); padding: 0; width: min(440px, calc(100% - 32px)); color: var(--ink); background: rgba(255,255,255,.96); box-shadow: 0 24px 80px rgba(24,42,66,.24); }
+    dialog[open] { animation: dialog-in .22s ease-out both; }
+    dialog::backdrop { background: rgba(25,42,63,.44); backdrop-filter: blur(5px); }
+    @keyframes dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+    .dialog-body { padding: 25px; }
+    .dialog-icon { width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; color: var(--danger); background: var(--danger-bg); }
+    dialog h3 { margin: 15px 0 6px; font-size: 1.2rem; }
+    dialog p { margin: 0; color: var(--muted); }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 16px 25px 22px; }
+
+    @media (max-width: 1180px) {
+      .toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .toolbar .control-wrap { grid-column: 1 / -1; }
+    }
+    @media (max-width: 960px) {
+      body { padding-bottom: calc(74px + env(safe-area-inset-bottom)); }
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 20px 16px 28px; }
+      .topbar { margin-bottom: 19px; }
+      .eyebrow, .date, .avatar { display: none; }
+      .top-actions .btn span { display: none; }
+      .top-actions .btn { width: 44px; padding: 0; }
+      .hero { padding: 23px 20px; align-items: flex-start; }
+      .hero .btn { display: none; }
+      .stats { gap: 10px; margin: 14px 0 23px; }
+      .stat-card { padding: 14px; }
+      .stat-value { font-size: 1.55rem; }
+      .stat-top { align-items: flex-start; }
+      .section-head { align-items: flex-start; }
+      .toolbar { gap: 8px; }
+      .card-actions .btn { min-height: 44px; }
+      .bottom-nav {
+        position: fixed; z-index: 50; inset: auto 0 0;
+        padding: 7px 12px calc(7px + env(safe-area-inset-bottom));
+        background: rgba(255,255,255,.83); border-top: 1px solid var(--line);
+        display: grid; grid-template-columns: repeat(2, 1fr); backdrop-filter: blur(12px);
+      }
+      .mobile-nav-btn { border: 0; border-radius: 14px; background: transparent; color: var(--muted); min-height: 48px; padding: 5px; display: grid; place-items: center; gap: 2px; font-size: .875rem; font-weight: 750; transition: background-color .2s ease, color .2s ease; }
+      .mobile-nav-btn.active { color: var(--brand); background: var(--mint); }
+      .mobile-nav-btn .icon { width: 22px; height: 22px; }
+      .toast-region { right: 12px; left: 12px; bottom: calc(80px + env(safe-area-inset-bottom)); }
+      .toast { min-width: 0; max-width: none; }
+    }
+    @media (max-width: 660px) {
+      .account-grid { grid-template-columns: minmax(0, 1fr); }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-field.full { grid-column: auto; }
+      .form-actions { align-items: stretch; flex-direction: column-reverse; }
+      .form-actions-right { margin: 0; display: grid; grid-template-columns: 1fr 1fr; }
+      .form-actions > .btn-danger { width: 100%; }
+    }
+    @media (max-width: 420px) {
+      .stat-card { padding: 10px; }
+      .stat-icon { display: none; }
+      .toolbar { grid-template-columns: 1fr; }
+      .toolbar .control-wrap { grid-column: auto; }
+      .account-number { font-size: 1rem; }
+      .card-actions .btn { gap: 4px; }
+      .card-actions .icon { width: 16px; height: 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <svg class="sr-only" aria-hidden="true">
+    <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4m8-4v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.8 12 3l9 7.8v9.1a1.1 1.1 0 0 1-1.1 1.1H4.1A1.1 1.1 0 0 1 3 19.9Z"/><path d="M9 21v-7h6v7"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-wallet" viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H19a2 2 0 0 1 2 2v12H5.5A2.5 2.5 0 0 1 3 16.5Z"/><path d="M3 8h18M16 13h5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+    <symbol id="i-bank" viewBox="0 0 24 24"><path d="m3 9 9-6 9 6M5 10v8m4-8v8m6-8v8m4-8v8M3 21h18M2 18h20"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M19 12H5m7 7-7-7 7-7"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2m3 0-1 15H6L5 6m5 4v7m4-7v7"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="เมนูหลัก">
+      <div class="brand">
+        <div class="brand-mark"><svg class="icon"><use href="#i-wallet"/></svg></div>
+        <div><div class="brand-name">Family Bank</div><div class="brand-sub">จัดการบัญชีครอบครัว</div></div>
+      </div>
+      <nav class="nav-list">
+        <button class="nav-btn active" data-view="dashboard" data-nav="home"><svg class="icon"><use href="#i-home"/></svg>แดชบอร์ด</button>
+        <button class="nav-btn" data-view="dashboard" data-nav="manage"><svg class="icon"><use href="#i-wallet"/></svg>จัดการบัญชี</button>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div><p class="eyebrow">ภาพรวมครอบครัว</p><h1 id="pageTitle">สวัสดีครับ 👋</h1><div class="date"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg><span id="todayLabel"></span></div></div>
+        <div class="top-actions">
+          <button class="btn btn-primary" id="topAddBtn" aria-label="เพิ่มบัญชี"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>เพิ่มบัญชี</span></button>
+          <div class="avatar" aria-label="บัญชีผู้ใช้">FB</div>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="view active" id="dashboardView" aria-labelledby="dashboardHeading">
+          <div class="hero">
+            <div class="hero-copy"><h2 id="dashboardHeading">ข้อมูลบัญชีที่ต้องใช้ อยู่ใกล้แค่ปลายนิ้ว</h2><p id="heroDescription">ค้นหาและคัดลอกข้อมูลบัญชีของทุกคนในครอบครัวได้อย่างรวดเร็ว</p></div>
+            <button class="btn" id="heroAddBtn"><svg class="icon"><use href="#i-plus"/></svg>เพิ่มบัญชีใหม่</button>
+          </div>
+
+          <div class="stats" aria-label="สรุปข้อมูล">
+            <article class="stat-card"><div class="stat-top"><span>บัญชีทั้งหมด</span><span class="stat-icon"><svg class="icon"><use href="#i-wallet"/></svg></span></div><div class="stat-value" id="statTotal">0</div></article>
+            <article class="stat-card"><div class="stat-top"><span>สมาชิก</span><span class="stat-icon"><svg class="icon"><use href="#i-users"/></svg></span></div><div class="stat-value" id="statOwners">0</div></article>
+            <article class="stat-card"><div class="stat-top"><span>ธนาคาร</span><span class="stat-icon"><svg class="icon"><use href="#i-bank"/></svg></span></div><div class="stat-value" id="statBanks">0</div></article>
+          </div>
+
+          <div class="section-head"><div><h2>บัญชีของครอบครัว</h2><p class="result-count" id="resultCount" aria-live="polite"></p></div></div>
+          <div class="toolbar" aria-label="ค้นหาและกรองข้อมูล">
+            <div class="control-wrap"><svg class="icon control-icon"><use href="#i-search"/></svg><label class="sr-only" for="searchInput">ค้นหาจากหัวข้อ ธนาคาร ชื่อบัญชี เลขบัญชี หรือเจ้าของ</label><input class="control" id="searchInput" type="search" placeholder="ค้นหาหัวข้อ ธนาคาร หรือข้อมูลบัญชี"></div>
+            <label class="sr-only" for="ownerFilter">กรองเจ้าของ</label><select class="control" id="ownerFilter"><option value="">เจ้าของทั้งหมด</option></select>
+            <div class="bank-select-wrap"><span class="bank-select-badge" id="bankFilterBadge" aria-hidden="true">ธ</span><label class="sr-only" for="bankFilter">กรองธนาคาร</label><select class="control" id="bankFilter"><option value="">ธนาคารทั้งหมด</option></select></div>
+          </div>
+
+          <div class="account-grid" id="accountGrid" aria-live="polite"></div>
+        </section>
+
+        <section class="view form-page" id="formView" aria-labelledby="formHeading">
+          <button class="back-link" id="backBtn"><svg class="icon"><use href="#i-arrow"/></svg>กลับไปแดชบอร์ด</button>
+          <form class="form-card" id="accountForm" novalidate>
+            <h2 id="formHeading">เพิ่มบัญชีใหม่</h2>
+            <p class="form-intro">กรอกข้อมูลที่จำเป็นเพื่อให้ค้นหาและคัดลอกได้สะดวก</p>
+            <input type="hidden" id="accountId">
+            <div class="form-grid">
+              <div class="form-field full"><label for="accountTitle">หัวข้อบัญชี (ไม่บังคับ)</label><input class="control" id="accountTitle" name="accountTitle" maxlength="80" autocomplete="off" placeholder="เช่น บัญชีเงินเดือนของพ่อ"></div>
+              <div class="form-field"><label for="bankName">ธนาคาร <span class="required">*</span></label><div class="bank-select-wrap"><span class="bank-select-badge" id="formBankBadge" aria-hidden="true">ธ</span><select class="control" id="bankName" name="bankName" required><option value="">เลือกธนาคาร</option></select></div><p class="error-text">กรุณาเลือกธนาคาร</p></div>
+              <div class="form-field"><label for="accountName">ชื่อบัญชี <span class="required">*</span></label><input class="control" id="accountName" name="accountName" autocomplete="off" required placeholder="ชื่อเจ้าของบัญชีตามธนาคาร"><p class="error-text">กรุณาระบุชื่อบัญชี</p></div>
+              <div class="form-field"><label for="accountNumber">เลขบัญชี <span class="required">*</span></label><input class="control" id="accountNumber" name="accountNumber" type="text" inputmode="numeric" autocomplete="off" required placeholder="000-0-00000-0"><p class="error-text">กรุณาระบุเลขบัญชี (ตัวเลข ช่องว่าง หรือขีด)</p></div>
+              <div class="form-field"><label for="owner">เจ้าของบัญชี / สมาชิก <span class="required">*</span></label><select class="control" id="owner" name="owner" required><option value="">เลือกเจ้าของบัญชี</option><option value="พ่อ">พ่อ</option><option value="แม่">แม่</option><option value="ลูกชาย">ลูกชาย</option><option value="ลูกสาว">ลูกสาว</option></select><p class="error-text">กรุณาเลือกเจ้าของบัญชี</p></div>
+              <div class="form-field"><label for="accountType">ประเภทบัญชี</label><select class="control" id="accountType" name="accountType"><option value="">ไม่ระบุ</option><option>ออมทรัพย์</option><option>กระแสรายวัน</option><option>ฝากประจำ</option></select></div>
+              <div class="form-field"><label for="category">หมวดหมู่</label><select class="control" id="category" name="category"><option value="">ไม่ระบุ</option><option>ส่วนตัว</option><option>ครอบครัว</option><option>อื่นๆ</option></select></div>
+              <div class="form-field full"><label for="note">หมายเหตุ</label><textarea class="control" id="note" name="note" maxlength="180" placeholder="รายละเอียดเพิ่มเติมที่ไม่ใช่ข้อมูลลับ"></textarea></div>
+            </div>
+            <div class="privacy-note"><svg class="icon"><use href="#i-info"/></svg><span>อย่ากรอก PIN, รหัสผ่าน, OTP, CVV หรือข้อมูลเข้าสู่ระบบธนาคาร</span></div>
+            <div class="form-actions">
+              <button class="btn btn-danger" type="button" id="deleteBtn" hidden><svg class="icon"><use href="#i-trash"/></svg>ลบบัญชี</button>
+              <div class="form-actions-right"><button class="btn btn-secondary" type="button" id="cancelBtn">ยกเลิก</button><button class="btn btn-primary" type="submit" id="saveBtn"><svg class="icon"><use href="#i-check"/></svg><span>บันทึกบัญชี</span></button></div>
+            </div>
+          </form>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <nav class="bottom-nav" aria-label="เมนูมือถือ">
+    <button class="mobile-nav-btn active" data-view="dashboard" data-nav="home"><svg class="icon"><use href="#i-home"/></svg>หน้าหลัก</button>
+    <button class="mobile-nav-btn" data-view="dashboard" data-nav="manage"><svg class="icon"><use href="#i-wallet"/></svg>จัดการบัญชี</button>
+  </nav>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="deleteDialog" aria-labelledby="dialogTitle">
+    <div class="dialog-body"><div class="dialog-icon"><svg class="icon"><use href="#i-trash"/></svg></div><h3 id="dialogTitle">ยืนยันการลบบัญชี?</h3><p>ระบบจะลบรายการนี้จาก Google Sheets เมื่อคุณยืนยัน</p></div>
+    <div class="dialog-actions"><button class="btn btn-secondary" id="dialogCancelBtn">ยกเลิก</button><button class="btn btn-danger" id="dialogConfirmBtn">ลบบัญชี</button></div>
+  </dialog>
+
+  <template id="accountCardTemplate">
+    <article class="account-card">
+      <div class="account-top"><div class="bank-lockup"><div class="bank-logo"></div><div><h3 class="account-title"></h3><p class="bank-name"></p><p class="account-owner"></p></div></div></div>
+      <div class="account-number-wrap"><div class="field-label">เลขบัญชี</div><div class="account-number"></div></div>
+      <div class="account-meta"></div><p class="note"></p>
+      <div class="card-actions"><button class="btn btn-secondary copy-number"><svg class="icon"><use href="#i-copy"/></svg>คัดลอกเลขบัญชี</button><button class="btn copy-all"><svg class="icon"><use href="#i-copy"/></svg>คัดลอกทั้งหมด</button></div>
+      <div class="card-footer"><button class="edit-btn"><svg class="icon"><use href="#i-edit"/></svg>แก้ไขข้อมูล</button></div>
+    </article>
+  </template>
+
+  <script>
+    'use strict';
+
+    const OWNER_OPTIONS = ['พ่อ', 'แม่', 'ลูกชาย', 'ลูกสาว'];
+    const BANKS = [
+      { name: 'ธนาคารกรุงเทพ', short: 'BBL', color: '#1f54a5' },
+      { name: 'ธนาคารกสิกรไทย', short: 'K', color: '#138447' },
+      { name: 'ธนาคารกรุงไทย', short: 'KTB', color: '#12a8e0' },
+      { name: 'ธนาคารไทยพาณิชย์', short: 'SCB', color: '#4e2a84' },
+      { name: 'ธนาคารกรุงศรีอยุธยา', short: 'BAY', color: '#f1b719', textColor: '#4b3a00' },
+      { name: 'ธนาคารทหารไทยธนชาต', short: 'ttb', color: '#ef6c00' },
+      { name: 'ธนาคารออมสิน', short: 'GSB', color: '#e84b93' },
+      { name: 'ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร', short: 'ธ.ก.ส.', color: '#27903f' },
+      { name: 'ธนาคารอาคารสงเคราะห์', short: 'ธอส.', color: '#f07c22' },
+      { name: 'ธนาคารซีไอเอ็มบี ไทย', short: 'CIMB', color: '#c9161d' },
+      { name: 'ธนาคารยูโอบี', short: 'UOB', color: '#174797' },
+      { name: 'ธนาคารเกียรตินาคินภัทร', short: 'KKP', color: '#6b2d84' },
+      { name: 'ธนาคารทิสโก้', short: 'TISCO', color: '#22579b' },
+      { name: 'ธนาคารแลนด์ แอนด์ เฮ้าส์', short: 'LH', color: '#6a9b3a' },
+      { name: 'ธนาคารไทยเครดิต', short: 'TCRB', color: '#173e78' },
+      { name: 'ธนาคารไอซีบีซี (ไทย)', short: 'ICBC', color: '#d71920' },
+      { name: 'ธนาคารอิสลามแห่งประเทศไทย', short: 'IBANK', color: '#1d8f76' },
+      { name: 'ธนาคารแห่งประเทศจีน (ไทย)', short: 'BOC', color: '#b81824' },
+      { name: 'ธนาคารเมกะ สากลพาณิชย์', short: 'MEGA', color: '#d8202f' },
+      { name: 'ธนาคารพัฒนาวิสาหกิจขนาดกลางและขนาดย่อมแห่งประเทศไทย', short: 'SME D', color: '#1b75bb' },
+      { name: 'ธนาคารเพื่อการส่งออกและนำเข้าแห่งประเทศไทย', short: 'EXIM', color: '#1b548d' },
+      { name: 'ธนาคารคลิกซ์', short: 'CLIX', color: '#202b5b' }
+    ];
+
+    let accounts = [];
+    let accessToken = '';
+    let loadState = 'signed-out';
+    let loadError = '';
+    let mutationPending = false;
+    let editingId = null;
+    const $ = selector => document.querySelector(selector);
+    const $$ = selector => Array.from(document.querySelectorAll(selector));
+    const deploymentId = $('meta[name="apps-script-api-deployment-id"]').content.trim();
+    const oauthClientId = $('meta[name="google-oauth-client-id"]').content.trim();
+    const oauthScopes = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email';
+    const isConfigured = /^[\w-]+$/.test(deploymentId) && /^[\w-]+\.apps\.googleusercontent\.com$/.test(oauthClientId);
+    const icon = name => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
+    const elements = {
+      dashboard: $('#dashboardView'), formView: $('#formView'), grid: $('#accountGrid'),
+      search: $('#searchInput'), ownerFilter: $('#ownerFilter'), bankFilter: $('#bankFilter'),
+      form: $('#accountForm'), formHeading: $('#formHeading'), accountId: $('#accountId'), saveBtn: $('#saveBtn'), deleteBtn: $('#deleteBtn'),
+      dialog: $('#deleteDialog'), toastRegion: $('#toastRegion')
+    };
+
+    function init() {
+      $('#todayLabel').textContent = new Intl.DateTimeFormat('th-TH', { dateStyle: 'full' }).format(new Date());
+      bindEvents();
+      populateFilters();
+      render();
+    }
+
+    function signIn() {
+      if (!isConfigured) return;
+      if (!window.google?.accounts?.oauth2) {
+        showToast('โหลดบริการเข้าสู่ระบบไม่ได้ กรุณาลองอีกครั้ง', 'error');
+        return;
+      }
+      const failed = () => showToast('เข้าสู่ระบบไม่สำเร็จ กรุณาลองอีกครั้ง', 'error');
+      window.google.accounts.oauth2.initTokenClient({
+        client_id: oauthClientId,
+        scope: oauthScopes,
+        include_granted_scopes: false,
+        callback: response => {
+          if (!response.access_token) { failed(); return; }
+          accessToken = response.access_token;
+          loadAccounts();
+        },
+        error_callback: failed
+      }).requestAccessToken();
+    }
+
+    async function callApi(name, parameters = []) {
+      if (!accessToken) throw new Error('กรุณาลงชื่อเข้าใช้ Google');
+      const response = await fetch(`https://script.googleapis.com/v1/scripts/${encodeURIComponent(deploymentId)}:run`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ function: name, parameters }),
+        cache: 'no-store'
+      });
+      if (response.status === 401 || response.status === 403) {
+        accessToken = '';
+        accounts = [];
+        loadState = 'signed-out';
+        throw new Error('กรุณาลงชื่อเข้าใช้อีกครั้งด้วยบัญชีที่ได้รับสิทธิ์');
+      }
+      const body = await response.json();
+      if (!response.ok || body.error || !body.response) {
+        const detail = body.error?.details?.[0]?.errorMessage;
+        const safeMessage = typeof detail === 'string' && /^(บัญชี Google นี้ไม่มีสิทธิ์|กรุณา|หัวคอลัมน์|ข้อมูลบัญชี|เลขบัญชี|เจ้าของบัญชี|รหัสบัญชี|ไม่พบรายการ)/.test(detail);
+        throw new Error(safeMessage ? detail : 'ติดต่อ Apps Script ไม่สำเร็จ กรุณาตรวจการตั้งค่าหรือลองใหม่');
+      }
+      return body.response.result;
+    }
+
+    async function loadAccounts() {
+      loadState = 'loading';
+      render();
+      try {
+        const result = await callApi('getDashboardData');
+        if (!Array.isArray(result?.accounts)) throw new Error('รูปแบบข้อมูลตอบกลับไม่ถูกต้อง');
+        accounts = result.accounts;
+        loadState = 'ready';
+        populateFilters();
+      } catch (error) {
+        loadError = error.message;
+        if (accessToken) loadState = 'error';
+        else showToast(loadError, 'error');
+      }
+      render();
+    }
+
+    function bindEvents() {
+      ['#topAddBtn', '#heroAddBtn'].forEach(id => $(id).addEventListener('click', () => openForm()));
+      $('#backBtn').addEventListener('click', showAccountManager);
+      $('#cancelBtn').addEventListener('click', showAccountManager);
+      $$('.nav-btn, .mobile-nav-btn').forEach(btn => btn.addEventListener('click', () => {
+        switchView('dashboard', btn.dataset.nav);
+        render();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }));
+      [elements.search, elements.ownerFilter, elements.bankFilter].forEach(control => control.addEventListener('input', render));
+      elements.bankFilter.addEventListener('input', () => updateBankBadge(elements.bankFilter, $('#bankFilterBadge')));
+      $('#bankName').addEventListener('input', event => updateBankBadge(event.currentTarget, $('#formBankBadge')));
+      elements.form.addEventListener('submit', saveAccount);
+      elements.deleteBtn.addEventListener('click', () => elements.dialog.showModal());
+      $('#dialogCancelBtn').addEventListener('click', () => elements.dialog.close());
+      $('#dialogConfirmBtn').addEventListener('click', deleteAccount);
+      elements.dialog.addEventListener('click', event => { if (event.target === elements.dialog) elements.dialog.close(); });
+      elements.form.querySelectorAll('[required]').forEach(input => input.addEventListener('input', () => input.closest('.form-field').classList.remove('invalid')));
+    }
+
+    function showLoading() {
+      elements.grid.replaceChildren();
+      for (let i = 0; i < 4; i += 1) {
+        const card = document.createElement('div'); card.className = 'skeleton-card';
+        card.innerHTML = '<div class="skeleton" style="height:46px;width:72%"></div><div class="skeleton" style="height:70px;margin-top:18px"></div><div class="skeleton" style="height:40px;margin-top:18px"></div>';
+        elements.grid.append(card);
+      }
+      $('#resultCount').textContent = 'กำลังโหลดข้อมูลบัญชี…';
+    }
+
+    function filteredAccounts() {
+      const term = elements.search.value.trim().toLocaleLowerCase('th');
+      return accounts.filter(account => {
+        const haystack = [account.accountTitle, account.bankName, account.accountName, account.accountNumber, account.owner].join(' ').toLocaleLowerCase('th');
+        return (!term || haystack.includes(term)) && (!elements.ownerFilter.value || account.owner === elements.ownerFilter.value) && (!elements.bankFilter.value || account.bankName === elements.bankFilter.value);
+      });
+    }
+
+    function render() {
+      renderStats();
+      if (loadState === 'loading') { showLoading(); return; }
+      if (loadState !== 'ready') { renderConnectionState(); return; }
+      const visible = filteredAccounts();
+      elements.grid.replaceChildren();
+      $('#resultCount').textContent = `แสดง ${visible.length} จาก ${accounts.length} บัญชี`;
+      if (!visible.length) { renderEmptyState(); return; }
+      visible.forEach(account => elements.grid.append(createAccountCard(account)));
+    }
+
+    function renderConnectionState() {
+      $('#resultCount').textContent = '';
+      const panel = document.createElement('div');
+      panel.className = 'state-panel show';
+      const content = document.createElement('div');
+      const heading = document.createElement('h3');
+      const description = document.createElement('p');
+      heading.textContent = !isConfigured ? 'รอตั้งค่าการเชื่อมต่อ' : loadState === 'error' ? 'โหลดข้อมูลบัญชีไม่สำเร็จ' : 'ลงชื่อเข้าใช้เพื่อดูบัญชี';
+      description.textContent = !isConfigured ? 'ตั้งค่า API Deployment ID และ OAuth Client ID ในไฟล์ก่อนเผยแพร่' : loadState === 'error' ? loadError : 'ใช้บัญชี Google ที่ได้รับสิทธิ์';
+      content.append(heading, description);
+      if (isConfigured) {
+        const retry = loadState === 'error';
+        const button = document.createElement('button');
+        button.className = 'btn btn-primary';
+        button.textContent = retry ? 'ลองโหลดอีกครั้ง' : 'ลงชื่อเข้าใช้ Google';
+        button.addEventListener('click', retry ? loadAccounts : signIn);
+        content.append(button);
+      }
+      panel.append(content);
+      elements.grid.replaceChildren(panel);
+    }
+
+    function renderStats() {
+      $('#statTotal').textContent = accounts.length;
+      $('#statOwners').textContent = new Set(accounts.map(a => a.owner)).size;
+      $('#statBanks').textContent = new Set(accounts.map(a => a.bankName)).size;
+    }
+
+    function createAccountCard(account) {
+      const card = $('#accountCardTemplate').content.firstElementChild.cloneNode(true);
+      const logo = card.querySelector('.bank-logo');
+      const bank = getBankMeta(account.bankName);
+      logo.textContent = bank.short;
+      logo.style.background = bank.color; logo.style.color = bank.textColor || '#fff';
+      card.querySelector('.account-title').textContent = account.accountTitle || account.bankName;
+      const bankName = card.querySelector('.bank-name');
+      bankName.textContent = account.bankName;
+      bankName.hidden = !account.accountTitle;
+      card.querySelector('.account-owner').textContent = `${account.accountName} • ${account.owner}`;
+      card.querySelector('.account-number').textContent = account.accountNumber;
+      const meta = card.querySelector('.account-meta');
+      [account.accountType, account.category].filter(Boolean).forEach(value => { const chip = document.createElement('span'); chip.className = 'chip'; chip.textContent = value; meta.append(chip); });
+      card.querySelector('.note').textContent = account.note || 'ไม่มีหมายเหตุ';
+      card.querySelector('.copy-number').addEventListener('click', () => copyText(account.accountNumber));
+      card.querySelector('.copy-all').addEventListener('click', () => copyText(`ธนาคาร: ${account.bankName}\nชื่อบัญชี: ${account.accountName}\nเลขบัญชี: ${account.accountNumber}`));
+      card.querySelector('.edit-btn').addEventListener('click', () => openForm(account.id));
+      return card;
+    }
+
+    function renderEmptyState() {
+      const panel = document.createElement('div'); panel.className = 'state-panel show';
+      const wrap = document.createElement('div');
+      const graphic = document.createElement('div'); graphic.className = 'state-graphic'; graphic.innerHTML = icon('search');
+      const title = document.createElement('h3'); title.textContent = accounts.length ? 'ไม่พบบัญชีที่ค้นหา' : 'ยังไม่มีข้อมูลบัญชี';
+      const text = document.createElement('p'); text.textContent = accounts.length ? 'ลองเปลี่ยนคำค้นหาหรือตัวกรองอีกครั้ง' : 'เริ่มเพิ่มบัญชีแรกของครอบครัวได้เลย';
+      const button = document.createElement('button'); button.className = 'btn btn-primary'; button.textContent = accounts.length ? 'ล้างตัวกรอง' : 'เพิ่มบัญชี';
+      button.addEventListener('click', accounts.length ? resetFilters : () => openForm());
+      wrap.append(graphic, title, text, button); panel.append(wrap); elements.grid.append(panel);
+    }
+
+    function populateFilters() {
+      const selections = { owner: elements.ownerFilter.value, bank: elements.bankFilter.value };
+      const fill = (select, values, firstLabel, selected) => {
+        select.replaceChildren(new Option(firstLabel, ''));
+        [...new Set(values)].sort((a,b) => a.localeCompare(b, 'th')).forEach(value => select.add(new Option(value, value)));
+        select.value = selected;
+      };
+      fill(elements.ownerFilter, OWNER_OPTIONS, 'เจ้าของทั้งหมด', selections.owner);
+      fill(elements.bankFilter, BANKS.map(bank => bank.name), 'ธนาคารทั้งหมด', selections.bank);
+      const formBank = $('#bankName');
+      const currentFormBank = formBank.value;
+      fill(formBank, BANKS.map(bank => bank.name), 'เลือกธนาคาร', currentFormBank);
+      updateBankBadge(elements.bankFilter, $('#bankFilterBadge'));
+      updateBankBadge(formBank, $('#formBankBadge'));
+    }
+
+    function getBankMeta(name) {
+      return BANKS.find(bank => bank.name === name) || { name: name || 'ธนาคาร', short: 'ธ', color: '#68756d' };
+    }
+
+    function updateBankBadge(select, badge) {
+      const bank = getBankMeta(select.value);
+      badge.textContent = bank.short;
+      badge.style.background = bank.color;
+      badge.style.color = bank.textColor || '#fff';
+    }
+
+    function resetFilters() { elements.search.value = ''; elements.ownerFilter.value = ''; elements.bankFilter.value = ''; updateBankBadge(elements.bankFilter, $('#bankFilterBadge')); render(); }
+
+    function openForm(id = null) {
+      if (mutationPending) return;
+      if (loadState !== 'ready') { showToast('กรุณาเชื่อมต่อและโหลดข้อมูลบัญชีก่อน', 'error'); return; }
+      editingId = id;
+      elements.form.reset();
+      elements.form.querySelectorAll('.invalid').forEach(field => field.classList.remove('invalid'));
+      const account = accounts.find(item => item.id === id);
+      elements.formHeading.textContent = account ? 'แก้ไขข้อมูลบัญชี' : 'เพิ่มบัญชีใหม่';
+      elements.deleteBtn.hidden = !account;
+      if (account) {
+        elements.accountId.value = account.id;
+        ['accountTitle', 'bankName', 'accountName', 'accountNumber', 'owner', 'accountType', 'category', 'note'].forEach(key => {
+          document.getElementById(key).value = account[key] || '';
+        });
+      } else { elements.accountId.value = ''; }
+      updateBankBadge($('#bankName'), $('#formBankBadge'));
+      switchView('form', 'manage');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.setTimeout(() => { if (elements.formView.classList.contains('active')) $('#accountTitle').focus(); }, 80);
+    }
+
+    function showDashboard() { switchView('dashboard'); render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+    function showAccountManager() { switchView('dashboard', 'manage'); render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+    function switchView(view, activeNav = view === 'form' ? 'manage' : 'home') {
+      elements.dashboard.classList.toggle('active', view === 'dashboard');
+      elements.formView.classList.toggle('active', view === 'form');
+      const manageMode = activeNav === 'manage';
+      $('#pageTitle').textContent = view === 'form'
+        ? (editingId ? 'แก้ไขบัญชี' : 'เพิ่มบัญชี')
+        : (manageMode ? 'จัดการบัญชี' : 'สวัสดีครับ 👋');
+      $('#dashboardHeading').textContent = manageMode
+        ? 'เพิ่ม แก้ไข และจัดการบัญชีในที่เดียว'
+        : 'ข้อมูลบัญชีที่ต้องใช้ อยู่ใกล้แค่ปลายนิ้ว';
+      $('#heroDescription').textContent = manageMode
+        ? 'เพิ่มบัญชีใหม่ หรือเลือกแก้ไขและลบบัญชีที่มีอยู่'
+        : 'ค้นหาและคัดลอกข้อมูลบัญชีของทุกคนในครอบครัวได้อย่างรวดเร็ว';
+      $$('.nav-btn, .mobile-nav-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.nav === activeNav));
+    }
+
+    function validateForm() {
+      let valid = true;
+      elements.form.querySelectorAll('[required]').forEach(input => {
+        const value = input.value.trim();
+        const numberInvalid = input.id === 'accountNumber' && !/^[0-9\s-]{6,30}$/.test(value);
+        const invalid = !value || numberInvalid;
+        input.closest('.form-field').classList.toggle('invalid', invalid);
+        if (invalid) valid = false;
+      });
+      return valid;
+    }
+
+    async function saveAccount(event) {
+      event.preventDefault();
+      if (mutationPending || loadState !== 'ready') return;
+      if (!validateForm()) { showToast('กรุณาตรวจสอบข้อมูลที่จำเป็น', 'error'); return; }
+      const saveButton = elements.saveBtn; const original = saveButton.innerHTML;
+      const data = Object.fromEntries(new FormData(elements.form).entries());
+      const accountId = editingId;
+      mutationPending = true;
+      saveButton.disabled = true; saveButton.textContent = 'กำลังบันทึก…';
+      try {
+        const updated = accountId ? await callApi('updateAccount', [accountId, data]) : await callApi('addAccount', [data]);
+        accounts = accountId ? accounts.map(account => account.id === accountId ? updated : account) : [updated, ...accounts];
+        populateFilters();
+        showAccountManager();
+        showToast('บันทึกแล้ว');
+      } catch (error) {
+        if (!accessToken) showAccountManager();
+        showToast(error.message, 'error');
+      } finally {
+        mutationPending = false;
+        saveButton.disabled = false; saveButton.innerHTML = original;
+      }
+    }
+
+    async function deleteAccount() {
+      if (!editingId || mutationPending || loadState !== 'ready') return;
+      const accountId = editingId;
+      mutationPending = true;
+      elements.dialog.close();
+      try {
+        await callApi('deleteAccount', [accountId]);
+        accounts = accounts.filter(item => item.id !== accountId);
+        populateFilters();
+        showAccountManager();
+        showToast('ลบบัญชีแล้ว');
+      } catch (error) {
+        if (!accessToken) showAccountManager();
+        showToast(error.message, 'error');
+      } finally {
+        mutationPending = false;
+      }
+    }
+
+    async function copyText(text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+        else {
+          const area = document.createElement('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.append(area); area.select();
+          if (!document.execCommand('copy')) throw new Error('Copy failed'); area.remove();
+        }
+        showToast('คัดลอกแล้ว');
+      } catch (error) { showToast('ไม่สามารถคัดลอกได้ กรุณาลองอีกครั้ง', 'error'); }
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div'); toast.className = `toast ${type === 'error' ? 'error' : ''}`; toast.setAttribute('role', 'status');
+      const mark = document.createElement('span'); mark.innerHTML = icon(type === 'error' ? 'close' : 'check');
+      const text = document.createElement('span'); text.textContent = message; toast.append(mark, text); elements.toastRegion.append(toast);
+      window.setTimeout(() => toast.remove(), 2800);
+    }
+
+    init();
+  </script>
+</body>
+</html>
+
