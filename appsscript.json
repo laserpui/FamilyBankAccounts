@@ -2,6 +2,10 @@
   "timeZone": "Asia/Bangkok",
   "runtimeVersion": "V8",
   "exceptionLogging": "STACKDRIVER",
+  "webapp": {
+    "access": "MYSELF",
+    "executeAs": "USER_ACCESSING"
+  },
   "dependencies": {
     "enabledAdvancedServices": [
       { "userSymbol": "Sheets", "serviceId": "sheets", "version": "v4" }

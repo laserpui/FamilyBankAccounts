@@ -4,6 +4,53 @@ const FIELDS = {
   owner: 30, accountType: 60, category: 60, note: 180
 };
 const HEADERS = ['id', ...Object.keys(FIELDS)];
+const DASHBOARD_ORIGIN = 'https://laserpui.github.io';
+
+function doGet(event) {
+  const channel = event?.parameter?.channel || '';
+  if (!/^[a-f0-9-]{36}$/.test(channel)) {
+    return HtmlService.createHtmlOutput('<p>เปิด Family Bank Manager บน GitHub Pages แล้วกดเชื่อม Google Sheets</p>');
+  }
+
+  requireOwner_();
+  return HtmlService.createHtmlOutput(`
+    <!doctype html><html lang="th"><head><meta charset="utf-8"><title>เชื่อม Google Sheets</title></head>
+    <body>
+      <h1>Family Bank Manager</h1>
+      <p id="status">กำลังเชื่อมต่อกับหน้าเว็บ…</p>
+      <script>
+        const origin = ${JSON.stringify(DASHBOARD_ORIGIN)};
+        const channel = ${JSON.stringify(channel)};
+        const dashboard = window.top.opener;
+        const allowed = ['getDashboardData', 'addAccount', 'updateAccount', 'deleteAccount'];
+        const status = document.getElementById('status');
+        if (!dashboard) {
+          status.textContent = 'กลับไปเปิดหน้าต่างเชื่อมต่อจากปุ่มบน GitHub Pages อีกครั้ง';
+        } else {
+          window.addEventListener('message', event => {
+            const request = event.data;
+            if (event.source !== dashboard || event.origin !== origin || request?.channel !== channel
+                || request.type !== 'family-bank-request' || typeof request.id !== 'string'
+                || !allowed.includes(request.method) || !Array.isArray(request.args)) return;
+            const reply = payload => dashboard.postMessage({
+              type: 'family-bank-response', channel, id: request.id, ...payload
+            }, origin);
+            const runner = google.script.run.withSuccessHandler(result => reply({ result }))
+              .withFailureHandler(error => {
+                const message = String(error?.message || '').replace(/^Error:\\s*/, '');
+                const safe = /^(บัญชี Google นี้ไม่มีสิทธิ์|กรุณา|หัวคอลัมน์|ข้อมูลบัญชี|เลขบัญชี|เจ้าของบัญชี|รหัสบัญชี|ไม่พบรายการ)/.test(message);
+                reply({ error: safe ? message : 'Apps Script ทำรายการไม่สำเร็จ กรุณาตรวจบันทึกการดำเนินการ' });
+              });
+            runner[request.method](...request.args);
+          });
+          dashboard.postMessage({ type: 'family-bank-ready', channel }, origin);
+          status.textContent = 'เชื่อมต่อแล้ว กลับไปที่หน้า GitHub Pages และเปิดหน้าต่างนี้ไว้ระหว่างใช้งาน';
+        }
+      </script>
+    </body></html>
+  `).setTitle('Family Bank Manager — Google Sheets')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
 
 function setupSheet() {
   return withLock_(() => {
@@ -52,11 +99,16 @@ function deleteAccount(id) {
   });
 }
 
-function openBook_() {
+function requireOwner_() {
   const settings = PropertiesService.getScriptProperties();
   const owner = (settings.getProperty('OWNER_EMAIL') || '').trim().toLowerCase();
   const caller = (Session.getActiveUser().getEmail() || '').toLowerCase();
   if (!owner || !caller || caller !== owner) throw new Error('บัญชี Google นี้ไม่มีสิทธิ์ใช้งาน');
+  return settings;
+}
+
+function openBook_() {
+  const settings = requireOwner_();
   const id = (settings.getProperty('SPREADSHEET_ID') || '').trim();
   if (!/^[\w-]+$/.test(id)) throw new Error('กรุณาตั้งค่า SPREADSHEET_ID ใน Apps Script');
   return SpreadsheetApp.openById(id);
