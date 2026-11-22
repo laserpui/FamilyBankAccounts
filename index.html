@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#e5ffff">
   <meta name="apps-script-web-app-url" content="https://script.google.com/macros/s/AKfycbx2aFc--af5ew7aw8HF84GvIl5VxDz7mdrBdYHfV2p_z5IS0AURCHxVzKUoD0zR9Wvprg/exec">
+  <meta name="apps-script-session-api-url" content="">
   <title>Family Bank Manager</title>
   <style>
     :root {
@@ -326,6 +327,7 @@
         <div><p class="eyebrow">ภาพรวมครอบครัว</p><h1 id="pageTitle">สวัสดีครับ 👋</h1><div class="date"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg><span id="todayLabel"></span></div></div>
         <div class="top-actions">
           <button class="btn btn-primary" id="topAddBtn" aria-label="เพิ่มบัญชี"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>เพิ่มบัญชี</span></button>
+          <button class="btn btn-secondary" id="signOutBtn" type="button" aria-label="ออกจากระบบ" hidden><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg><span>ออกจากระบบ</span></button>
           <div class="avatar" aria-label="บัญชีผู้ใช้">FB</div>
         </div>
       </header>
@@ -436,6 +438,8 @@
     let channel = '';
     let connectionTimer;
     let closeWatcher;
+    let sessionTimer;
+    let session = null;
     const pendingRequests = new Map();
     let loadState = 'signed-out';
     let loadError = '';
@@ -444,7 +448,11 @@
     const $ = selector => document.querySelector(selector);
     const $$ = selector => Array.from(document.querySelectorAll(selector));
     const webAppUrl = $('meta[name="apps-script-web-app-url"]').content.trim();
-    const isConfigured = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(webAppUrl);
+    const sessionApiUrl = $('meta[name="apps-script-session-api-url"]').content.trim();
+    const webAppPattern = /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/;
+    const isConfigured = webAppPattern.test(webAppUrl);
+    const sessionEnabled = isConfigured && webAppPattern.test(sessionApiUrl) && sessionApiUrl !== webAppUrl;
+    const sessionStorageKey = 'family-bank-manager:session:v1';
     const icon = name => `<svg class="icon" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
     const elements = {
@@ -459,7 +467,51 @@
       bindEvents();
       window.addEventListener('message', receiveBridgeMessage);
       populateFilters();
-      render();
+      if (sessionEnabled && restoreSession()) loadAccounts();
+      else render();
+    }
+
+    function restoreSession() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(sessionStorageKey) || 'null');
+        if (saved?.apiUrl !== sessionApiUrl || !/^[a-f0-9]{64}$/.test(saved.token)
+            || !Number.isFinite(saved.expiresAt) || saved.expiresAt <= Date.now()) return false;
+        setSession(saved);
+        return true;
+      } catch (_) { return false; }
+    }
+
+    function setSession(value) {
+      session = value;
+      clearTimeout(sessionTimer);
+      if (!value) {
+        try { localStorage.removeItem(sessionStorageKey); } catch (_) {}
+        return;
+      }
+      sessionTimer = setTimeout(() => disconnect('เซสชันหมดอายุ กรุณาลงชื่อเข้าใช้อีกครั้ง'),
+        Math.max(0, Math.min(value.expiresAt - Date.now(), 8 * 60 * 60 * 1000)));
+    }
+
+    async function startSavedSession() {
+      try {
+        const token = Array.from(crypto.getRandomValues(new Uint8Array(32)),
+          byte => byte.toString(16).padStart(2, '0')).join('');
+        const result = await callBridge('createDashboardSession', [token]);
+        if (!Number.isFinite(result?.expiresAt) || result.expiresAt <= Date.now()) {
+          throw new Error('Apps Script ส่งเซสชันกลับมาไม่ถูกต้อง');
+        }
+        const value = { token, expiresAt: result.expiresAt, apiUrl: sessionApiUrl };
+        setSession(value);
+        try { localStorage.setItem(sessionStorageKey, JSON.stringify(value)); } catch (_) {}
+        clearInterval(closeWatcher);
+        popup?.close();
+        popup = null;
+        bridge = null;
+        channel = '';
+        await loadAccounts();
+      } catch (error) {
+        disconnect(error.message);
+      }
     }
 
     function signIn() {
@@ -487,7 +539,8 @@
         if (!trustedOrigin || event.source.top !== popup) return;
         clearTimeout(connectionTimer);
         bridge = { window: event.source, origin: event.origin };
-        loadAccounts();
+        if (sessionEnabled) startSavedSession();
+        else loadAccounts();
       } else if (message.type === 'family-bank-response' && bridge
           && event.source === bridge.window && event.origin === bridge.origin) {
         const request = pendingRequests.get(message.id);
@@ -499,9 +552,10 @@
       }
     }
 
-    function disconnect(message) {
+    function disconnect(message, isError = true) {
       clearTimeout(connectionTimer);
       clearInterval(closeWatcher);
+      setSession(null);
       bridge = null;
       popup = null;
       channel = '';
@@ -513,10 +567,35 @@
       }
       pendingRequests.clear();
       showAccountManager();
-      showToast(message, 'error');
+      showToast(message, isError ? 'error' : 'success');
     }
 
     async function callApi(method, args = []) {
+      if (!sessionEnabled) return callBridge(method, args);
+      if (!session || session.expiresAt <= Date.now()) {
+        disconnect('เซสชันหมดอายุ กรุณาลงชื่อเข้าใช้อีกครั้ง');
+        throw new Error('กรุณาลงชื่อเข้าใช้อีกครั้ง');
+      }
+      const response = await fetch(sessionApiUrl, {
+        method: 'POST',
+        credentials: 'omit',
+        cache: 'no-store',
+        signal: AbortSignal.timeout(35000),
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify({ method, args, token: session.token })
+      });
+      if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('เปิดบริการข้อมูลไม่ได้ กรุณาตรวจ URL และเวอร์ชัน Apps Script');
+      }
+      const result = await response.json();
+      if (result.code === 'AUTH_REQUIRED') {
+        disconnect('เซสชันหมดอายุหรือถูกยกเลิก กรุณาลงชื่อเข้าใช้อีกครั้ง');
+      }
+      if (!result.ok) throw new Error(result.message || 'ไม่สามารถทำรายการได้');
+      return result.result;
+    }
+
+    async function callBridge(method, args = []) {
       if (!bridge || popup?.closed) throw new Error('กรุณาเชื่อม Google Sheets อีกครั้ง');
       const id = crypto.randomUUID();
       return new Promise((resolve, reject) => {
@@ -530,22 +609,37 @@
     }
 
     async function loadAccounts() {
+      const connection = sessionEnabled ? session : bridge;
       loadState = 'loading';
       render();
       try {
         const result = await callApi('getDashboardData');
+        if (connection !== (sessionEnabled ? session : bridge)) return;
         if (!Array.isArray(result?.accounts)) throw new Error('รูปแบบข้อมูลตอบกลับไม่ถูกต้อง');
         accounts = result.accounts;
         loadState = 'ready';
         populateFilters();
       } catch (error) {
+        if (connection !== (sessionEnabled ? session : bridge)) return;
         loadError = error.message;
-        if (bridge) loadState = 'error';
+        if (bridge || session) loadState = 'error';
       }
       render();
     }
 
     function bindEvents() {
+      $('#signOutBtn').addEventListener('click', async () => {
+        if (mutationPending) return;
+        mutationPending = true;
+        try {
+          await callApi('logout');
+          disconnect('ออกจากระบบแล้ว', false);
+        } catch (error) {
+          showToast(error.message, 'error');
+        } finally {
+          mutationPending = false;
+        }
+      });
       ['#topAddBtn', '#heroAddBtn'].forEach(id => $(id).addEventListener('click', () => openForm()));
       $('#backBtn').addEventListener('click', showAccountManager);
       $('#cancelBtn').addEventListener('click', showAccountManager);
@@ -584,6 +678,7 @@
     }
 
     function render() {
+      $('#signOutBtn').hidden = !session;
       renderStats();
       if (loadState === 'loading') { showLoading(); return; }
       if (loadState !== 'ready') { renderConnectionState(); return; }
@@ -602,14 +697,17 @@
       const heading = document.createElement('h3');
       const description = document.createElement('p');
       const connecting = loadState === 'connecting';
-      heading.textContent = !isConfigured ? 'รอตั้งค่าการเชื่อมต่อ' : connecting ? 'กำลังเชื่อม Google Sheets' : loadState === 'error' ? 'โหลดข้อมูลบัญชีไม่สำเร็จ' : 'เชื่อม Google Sheets';
-      description.textContent = !isConfigured ? 'ตรวจ URL ของ Apps Script Web App ในไฟล์ก่อนเผยแพร่' : loadState === 'error' ? loadError : 'เปิดหน้าต่าง Apps Script ด้วยบัญชี Google เจ้าของ และเปิดหน้าต่างนั้นไว้ระหว่างใช้งาน';
+      heading.textContent = !isConfigured ? 'รอตั้งค่าการเชื่อมต่อ' : connecting ? 'กำลังตรวจสอบบัญชี Google'
+        : loadState === 'error' ? 'โหลดข้อมูลบัญชีไม่สำเร็จ' : sessionEnabled ? 'ลงชื่อเข้าใช้ครั้งแรก' : 'เชื่อม Google Sheets';
+      description.textContent = !isConfigured ? 'ตรวจ URL ของ Apps Script Web App ในไฟล์ก่อนเผยแพร่' : loadState === 'error' ? loadError
+        : sessionEnabled ? 'ยืนยันด้วยบัญชี Google เจ้าของ แล้วระบบจะโหลดข้อมูลเองเมื่อเปิดหน้านี้อีกครั้ง'
+        : 'เปิดหน้าต่าง Apps Script ด้วยบัญชี Google เจ้าของ และเปิดหน้าต่างนั้นไว้ระหว่างใช้งาน';
       content.append(heading, description);
       if (isConfigured && !connecting) {
         const retry = loadState === 'error';
         const button = document.createElement('button');
         button.className = 'btn btn-primary';
-        button.textContent = retry ? 'ลองโหลดอีกครั้ง' : 'เชื่อม Google Sheets';
+        button.textContent = retry ? 'ลองโหลดอีกครั้ง' : sessionEnabled ? 'ลงชื่อเข้าใช้ Google' : 'เชื่อม Google Sheets';
         button.addEventListener('click', retry ? loadAccounts : signIn);
         content.append(button);
       }
@@ -748,12 +846,13 @@
       saveButton.disabled = true; saveButton.textContent = 'กำลังบันทึก…';
       try {
         const updated = accountId ? await callApi('updateAccount', [accountId, data]) : await callApi('addAccount', [data]);
+        if (sessionEnabled && !session) return;
         accounts = accountId ? accounts.map(account => account.id === accountId ? updated : account) : [updated, ...accounts];
         populateFilters();
         showAccountManager();
         showToast('บันทึกแล้ว');
       } catch (error) {
-        if (!bridge) showAccountManager();
+        if (!bridge && !session) showAccountManager();
         showToast(error.message, 'error');
       } finally {
         mutationPending = false;
@@ -768,12 +867,13 @@
       elements.dialog.close();
       try {
         await callApi('deleteAccount', [accountId]);
+        if (sessionEnabled && !session) return;
         accounts = accounts.filter(item => item.id !== accountId);
         populateFilters();
         showAccountManager();
         showToast('ลบบัญชีแล้ว');
       } catch (error) {
-        if (!bridge) showAccountManager();
+        if (!bridge && !session) showAccountManager();
         showToast(error.message, 'error');
       } finally {
         mutationPending = false;
