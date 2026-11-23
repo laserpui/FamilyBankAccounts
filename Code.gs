@@ -1,261 +1,231 @@
-const SHEET_NAME = 'FamilyBankAccounts';
-const FIELDS = {
-  accountTitle: 80, bankName: 120, accountName: 150, accountNumber: 30,
-  owner: 30, accountType: 60, category: 60, note: 180
-};
-const HEADERS = ['id', ...Object.keys(FIELDS)];
-const DASHBOARD_ORIGIN = 'https://laserpui.github.io';
-const SESSION_PREFIX = 'DASHBOARD_SESSION_';
-const SESSION_MS = 8 * 60 * 60 * 1000;
+/**
+ * Family Bank Manager — Google Apps Script / Google Sheets backend
+ * 1. Paste into a spreadsheet-bound Apps Script project.
+ * 2. Run setupFamilyBank() once. No existing account rows are cleared.
+ * 3. No API key is required. Access is determined by the Web app deployment.
+ * 4. Deploy as Web app. See APPS_SCRIPT_SETUP.md for the API contract.
+ * All account operations use POST; GET exposes health information only.
+ */
+const FAMILY_BANK = Object.freeze({
+  sheetName: 'FamilyBank_Accounts',
+  idProperty: 'FAMILY_BANK_SPREADSHEET_ID',
+  maxAccounts: 10000,
+  maxBodyChars: 2000000,
+  headers: ['id', 'nickname', 'bank', 'number', 'owner', 'type', 'category', 'branch', 'note', 'status', 'favorite', 'createdAt', 'updatedAt'],
+  banks: ['kbank', 'scb', 'bbl', 'ktb', 'bay', 'ttb', 'gsb', 'baac', 'ghb', 'cimb', 'uob', 'other'],
+  types: ['ออมทรัพย์', 'กระแสรายวัน', 'ฝากประจำ', 'อื่น ๆ'],
+  // Legacy values remain valid for existing records and backups; the form offers the four family roles.
+  categories: ['พ่อ', 'แม่', 'ลูกชาย', 'ลูกสาว', 'ส่วนตัว', 'ครอบครัว', 'ธุรกิจ', 'อื่น ๆ']
+});
 
-function doGet(event) {
-  const channel = event?.parameter?.channel || '';
-  if (!/^[a-f0-9-]{36}$/.test(channel)) {
-    return HtmlService.createHtmlOutput('<p>เปิด Family Bank Manager บน GitHub Pages แล้วกดเชื่อม Google Sheets</p>');
-  }
-
-  requireOwner_();
-  return HtmlService.createHtmlOutput(`
-    <!doctype html><html lang="th"><head><meta charset="utf-8"><title>เชื่อม Google Sheets</title></head>
-    <body>
-      <h1>Family Bank Manager</h1>
-      <p id="status">กำลังเชื่อมต่อกับหน้าเว็บ…</p>
-      <script>
-        const origin = ${JSON.stringify(DASHBOARD_ORIGIN)};
-        const channel = ${JSON.stringify(channel)};
-        const dashboard = window.top.opener;
-        const allowed = ['createDashboardSession', 'getDashboardData', 'addAccount', 'updateAccount', 'deleteAccount'];
-        const status = document.getElementById('status');
-        if (!dashboard) {
-          status.textContent = 'กลับไปเปิดหน้าต่างเชื่อมต่อจากปุ่มบน GitHub Pages อีกครั้ง';
-        } else {
-          window.addEventListener('message', event => {
-            const request = event.data;
-            if (event.source !== dashboard || event.origin !== origin || request?.channel !== channel
-                || request.type !== 'family-bank-request' || typeof request.id !== 'string'
-                || !allowed.includes(request.method) || !Array.isArray(request.args)) return;
-            const reply = payload => dashboard.postMessage({
-              type: 'family-bank-response', channel, id: request.id, ...payload
-            }, origin);
-            const runner = google.script.run.withSuccessHandler(result => reply({ result }))
-              .withFailureHandler(error => {
-                const message = String(error?.message || '').replace(/^Error:\\s*/, '');
-                const safe = /^(บัญชี Google นี้ไม่มีสิทธิ์|กรุณา|หัวคอลัมน์|ข้อมูลบัญชี|เลขบัญชี|เจ้าของบัญชี|รหัสบัญชี|ไม่พบรายการ)/.test(message);
-                reply({ error: safe ? message : 'Apps Script ทำรายการไม่สำเร็จ กรุณาตรวจบันทึกการดำเนินการ' });
-              });
-            runner[request.method](...request.args);
-          });
-          dashboard.postMessage({ type: 'family-bank-ready', channel }, origin);
-          status.textContent = 'เชื่อมต่อแล้ว กลับไปที่หน้า GitHub Pages และเปิดหน้าต่างนี้ไว้ระหว่างใช้งาน';
-        }
-      </script>
-    </body></html>
-  `).setTitle('Family Bank Manager — Google Sheets')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-// Called from the existing owner-authorized Google window, never by doPost.
-function createDashboardSession(token) {
-  const settings = requireOwner_();
-  if (!isSessionToken_(token)) throw new Error('ข้อมูลบัญชีสำหรับเปิดเซสชันไม่ถูกต้อง');
-  return withLock_(() => {
-    const now = Date.now();
-    const expiresAt = now + SESSION_MS;
-    const entries = Object.entries(settings.getProperties())
-      .filter(([name]) => name.startsWith(SESSION_PREFIX));
-    for (const [name, value] of entries) {
-      if (!(Number(value) > now)) settings.deleteProperty(name);
-    }
-    settings.setProperty(sessionKey_(token), String(expiresAt));
-    return { expiresAt };
-  });
-}
-
-function doPost(event) {
-  const json = payload => ContentService.createTextOutput(JSON.stringify(payload))
-    .setMimeType(ContentService.MimeType.JSON);
-  const raw = event?.postData?.contents;
-  if (typeof raw !== 'string' || raw.length > 6000) return json({ ok: false, code: 'INVALID_REQUEST' });
-  let request;
-  try {
-    request = JSON.parse(raw);
-  } catch (_) {
-    return json({ ok: false, code: 'INVALID_REQUEST' });
-  }
-  if (!request || !isSessionToken_(request.token)) return json({ ok: false, code: 'AUTH_REQUIRED' });
-  const settings = PropertiesService.getScriptProperties();
-  const owner = (settings.getProperty('OWNER_EMAIL') || '').trim().toLowerCase();
-  const executor = (Session.getEffectiveUser().getEmail() || '').toLowerCase();
-  if (!owner || executor !== owner) return json({ ok: false, code: 'AUTH_REQUIRED' });
-  const key = sessionKey_(request.token);
-  if (!(Number(settings.getProperty(key)) > Date.now())) return json({ ok: false, code: 'AUTH_REQUIRED' });
-  try {
-    return withLock_(() => {
-      if (!(Number(settings.getProperty(key)) > Date.now())) return json({ ok: false, code: 'AUTH_REQUIRED' });
-      if (request.method === 'logout') {
-        settings.deleteProperty(key);
-        return json({ ok: true });
-      }
-      if (!['getDashboardData', 'addAccount', 'updateAccount', 'deleteAccount'].includes(request.method)
-          || !Array.isArray(request.args)) return json({ ok: false, code: 'INVALID_REQUEST' });
-      return json({ ok: true, result: runAccountAction_(getSheet_(settings), request.method, request.args) });
-    });
-  } catch (error) {
-    const message = String(error?.message || '');
-    const expected = /^(กรุณา|หัวคอลัมน์|ข้อมูลบัญชี|เลขบัญชี|เจ้าของบัญชี|รหัสบัญชี|ไม่พบรายการ)/.test(message);
-    return json({ ok: false, code: 'REQUEST_FAILED', message: expected ? message : 'Apps Script ทำรายการไม่สำเร็จ กรุณาลองอีกครั้ง' });
-  }
-}
-
-function isSessionToken_(token) {
-  return typeof token === 'string' && /^[a-f0-9]{64}$/.test(token);
-}
-
-function sessionKey_(token) {
-  const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, token, Utilities.Charset.UTF_8);
-  return SESSION_PREFIX + Utilities.base64EncodeWebSafe(digest);
-}
-
-function setupSheet() {
-  return withLock_(() => {
-    const book = openBook_();
-    const sheet = book.getSheetByName(SHEET_NAME) || book.insertSheet(SHEET_NAME);
+/** Run from the editor; setup never deletes existing rows or rotates an existing key. */
+function setupFamilyBank() {
+  return withFamilyBankLock_(function () {
+    const props = PropertiesService.getScriptProperties();
+    const configuredId = props.getProperty(FAMILY_BANK.idProperty);
+    const ss = configuredId ? SpreadsheetApp.openById(configuredId) : SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) failFamilyBank_('NOT_CONFIGURED', 'กรุณาเปิด Apps Script จาก Google Sheet หรือกำหนด FAMILY_BANK_SPREADSHEET_ID ใน Script properties');
+    let sheet = ss.getSheetByName(FAMILY_BANK.sheetName);
+    if (!sheet) sheet = ss.insertSheet(FAMILY_BANK.sheetName);
     if (sheet.getLastRow() === 0) {
-      sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
-      sheet.setFrozenRows(1);
+      ensureFamilyBankGrid_(sheet, 1);
+      sheet.getRange(1, 1, 1, FAMILY_BANK.headers.length).setValues([FAMILY_BANK.headers]);
     }
-    checkHeaders_(sheet);
-    sheet.getRange('E:E').setNumberFormat('@');
-    return { sheetName: SHEET_NAME };
+    assertFamilyBankHeaders_(sheet);
+    sheet.setFrozenRows(1);
+    sheet.getRange(1, 1, 1, FAMILY_BANK.headers.length)
+      .setBackground('#146a68').setFontColor('#ffffff').setFontWeight('bold');
+    props.setProperty(FAMILY_BANK.idProperty, ss.getId());
+    SpreadsheetApp.flush();
+    const result = { ok: true, sheetName: FAMILY_BANK.sheetName, message: 'ตั้งค่า Google Sheets แล้ว ระบบนี้ไม่ใช้ API key' };
+    console.log(result.message);
+    return result;
   });
 }
 
-function getDashboardData() {
-  return ownerAccountAction_('getDashboardData', []);
+/** Public health endpoint: never exposes accounts, spreadsheet ID or API key. */
+function doGet() {
+  return familyBankJson_({ ok: true, service: 'Family Bank Manager', apiVersion: 1, message: 'Use POST with action for account operations. No API key is required.' });
 }
 
-function addAccount(input) {
-  return ownerAccountAction_('addAccount', [input]);
-}
-
-function updateAccount(id, input) {
-  return ownerAccountAction_('updateAccount', [id, input]);
-}
-
-function deleteAccount(id) {
-  return ownerAccountAction_('deleteAccount', [id]);
-}
-
-function ownerAccountAction_(method, args) {
-  const settings = requireOwner_();
-  return withLock_(() => runAccountAction_(getSheet_(settings), method, args));
-}
-
-function runAccountAction_(sheet, method, args) {
-  if (method === 'getDashboardData') return { accounts: readRows_(sheet).map(row => row.account) };
-  if (method === 'addAccount') {
-    const account = { id: Utilities.getUuid(), ...validateAccount_(args[0]) };
-    const row = sheet.getLastRow() + 1;
-    if (row > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 1);
-    writeAccount_(sheet, row, account);
-    return account;
+/** JSON or text/plain containing JSON. No API key is required. */
+function doPost(e) {
+  try {
+    const raw = e && e.postData && e.postData.contents;
+    if (typeof raw !== 'string' || !raw.length) failFamilyBank_('INVALID_REQUEST', 'ต้องส่ง JSON ใน request body');
+    if (raw.length > FAMILY_BANK.maxBodyChars) failFamilyBank_('PAYLOAD_TOO_LARGE', 'ข้อมูลที่ส่งมีขนาดใหญ่เกินกำหนด');
+    let request;
+    try { request = JSON.parse(raw); } catch (error) { failFamilyBank_('INVALID_JSON', 'อ่าน JSON ไม่สำเร็จ'); }
+    if (!request || typeof request !== 'object' || Array.isArray(request)) failFamilyBank_('INVALID_REQUEST', 'รูปแบบคำขอไม่ถูกต้อง');
+    const data = withFamilyBankLock_(function () {
+      const sheet = getFamilyBankSheet_();
+      switch (request.action) {
+        case 'list': return { version: 1, accounts: readFamilyBankAccounts_(sheet) };
+        case 'saveAccount': return saveFamilyBankAccount_(sheet, request.account, request.expectedUpdatedAt);
+        case 'setFavorite': return setFamilyBankFavorite_(sheet, request);
+        case 'deleteAccount': return deleteFamilyBankAccount_(sheet, request);
+        case 'importAccounts': return importFamilyBankAccounts_(sheet, request.backup);
+        default: failFamilyBank_('UNKNOWN_ACTION', 'รองรับ list, saveAccount, setFavorite, deleteAccount และ importAccounts');
+      }
+    });
+    return familyBankJson_({ ok: true, data: data });
+  } catch (error) {
+    // Never log request bodies or return internal exceptions containing financial data.
+    return familyBankJson_({ ok: false, error: { code: error.familyBankCode || 'INTERNAL_ERROR', message: error.familyBankCode ? error.message : 'ระบบทำรายการไม่สำเร็จ กรุณาตรวจการตั้งค่าและสิทธิ์ของ Apps Script' } });
   }
-  const [id, input] = args;
-  const row = findRow_(sheet, id);
-  if (method === 'deleteAccount') {
-    sheet.deleteRow(row);
-    return { id };
-  }
-  if (method !== 'updateAccount') throw new Error('ไม่รองรับคำขอนี้');
-  const account = { id, ...validateAccount_(input) };
-  writeAccount_(sheet, row, account);
-  return account;
 }
 
-function requireOwner_() {
-  const settings = PropertiesService.getScriptProperties();
-  const owner = (settings.getProperty('OWNER_EMAIL') || '').trim().toLowerCase();
-  const caller = (Session.getActiveUser().getEmail() || '').toLowerCase();
-  if (!owner || !caller || caller !== owner) throw new Error('บัญชี Google นี้ไม่มีสิทธิ์ใช้งาน');
-  return settings;
+function withFamilyBankLock_(work) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) failFamilyBank_('BUSY', 'มีผู้ใช้งานกำลังบันทึกข้อมูล กรุณาลองใหม่');
+  try { return work(); } finally { lock.releaseLock(); }
 }
 
-function openBook_(settings = requireOwner_()) {
-  const id = (settings.getProperty('SPREADSHEET_ID') || '').trim();
-  if (!/^[\w-]+$/.test(id)) throw new Error('กรุณาตั้งค่า SPREADSHEET_ID ใน Apps Script');
-  return SpreadsheetApp.openById(id);
-}
-
-function getSheet_(settings) {
-  const sheet = openBook_(settings).getSheetByName(SHEET_NAME);
-  if (!sheet) throw new Error('กรุณารัน setupSheet ใน Apps Script ก่อน');
-  checkHeaders_(sheet);
+function getFamilyBankSheet_() {
+  const spreadsheetId = PropertiesService.getScriptProperties().getProperty(FAMILY_BANK.idProperty);
+  if (!spreadsheetId) failFamilyBank_('NOT_CONFIGURED', 'กรุณารัน setupFamilyBank() ก่อน');
+  const sheet = SpreadsheetApp.openById(spreadsheetId).getSheetByName(FAMILY_BANK.sheetName);
+  if (!sheet) failFamilyBank_('NOT_CONFIGURED', 'ไม่พบชีตบัญชี กรุณารัน setupFamilyBank()');
+  assertFamilyBankHeaders_(sheet);
   return sheet;
 }
 
-function checkHeaders_(sheet) {
-  const columns = sheet.getRange(1, 1, 1, HEADERS.length).getValues()[0];
-  if (sheet.getLastColumn() !== HEADERS.length || HEADERS.some((name, i) => columns[i] !== name)) {
-    throw new Error('หัวคอลัมน์ FamilyBankAccounts ไม่ตรงกับรูปแบบที่กำหนด');
+function assertFamilyBankHeaders_(sheet) {
+  if (sheet.getMaxColumns() < FAMILY_BANK.headers.length) failFamilyBank_('SCHEMA_MISMATCH', 'คอลัมน์ชีตไม่ตรงกับระบบ ระบบไม่ได้แก้ไขข้อมูลเดิม');
+  const actual = sheet.getRange(1, 1, 1, FAMILY_BANK.headers.length).getDisplayValues()[0];
+  if (actual.some(function (value, index) { return value !== FAMILY_BANK.headers[index]; })) {
+    failFamilyBank_('SCHEMA_MISMATCH', 'หัวตารางของ FamilyBank_Accounts ไม่ตรงกับระบบ กรุณาตรวจสอบโดยไม่ลบข้อมูลเดิม');
   }
 }
 
-function readRows_(sheet) {
+function readFamilyBankAccounts_(sheet) {
   const count = sheet.getLastRow() - 1;
-  if (!count) return [];
-  return sheet.getRange(2, 1, count, HEADERS.length).getDisplayValues()
-    .map((values, index) => ({
-      row: index + 2,
-      account: Object.fromEntries(HEADERS.map((name, i) => [name, values[i]]))
-    }))
-    .filter(entry => entry.account.id);
+  if (count <= 0) return [];
+  if (count > FAMILY_BANK.maxAccounts) failFamilyBank_('LIMIT_EXCEEDED', 'จำนวนแถวเกิน 10,000 บัญชี');
+  const rows = sheet.getRange(2, 1, count, FAMILY_BANK.headers.length).getDisplayValues();
+  const ids = new Set(), pairs = new Set();
+  return rows.map(function (row, index) {
+    if (row.every(function (value) { return value === ''; })) return null;
+    const raw = {};
+    FAMILY_BANK.headers.forEach(function (key, column) { raw[key] = row[column]; });
+    const favorite = raw.favorite.toLowerCase();
+    if (favorite !== 'true' && favorite !== 'false') failFamilyBank_('INVALID_SHEET_DATA', 'ค่า favorite ในแถว ' + (index + 2) + ' ต้องเป็น true หรือ false');
+    raw.favorite = favorite === 'true';
+    let account;
+    try { account = validateFamilyBankAccount_(raw, false); }
+    catch (error) { failFamilyBank_('INVALID_SHEET_DATA', 'ข้อมูลบัญชีในแถว ' + (index + 2) + ' ไม่ถูกต้อง กรุณาตรวจชื่อ ธนาคาร เลขบัญชี และสถานะ'); }
+    if (!raw.createdAt || !raw.updatedAt) failFamilyBank_('INVALID_SHEET_DATA', 'แถว ' + (index + 2) + ' ไม่มี createdAt หรือ updatedAt');
+    if (ids.has(account.id) || pairs.has(account.bank + ':' + account.number)) failFamilyBank_('INVALID_SHEET_DATA', 'พบ ID หรือเลขบัญชีซ้ำในชีต กรุณาตรวจแถว ' + (index + 2));
+    ids.add(account.id); pairs.add(account.bank + ':' + account.number);
+    return Object.assign(account, { createdAt: raw.createdAt, updatedAt: raw.updatedAt, _row: index + 2 });
+  }).filter(function (account) { return account !== null; });
 }
 
-function findRow_(sheet, id) {
-  if (typeof id !== 'string' || !/^[a-f0-9-]{36}$/i.test(id)) throw new Error('รหัสบัญชีไม่ถูกต้อง');
-  const matches = readRows_(sheet).filter(entry => entry.account.id === id);
-  if (matches.length !== 1) throw new Error('ไม่พบรายการบัญชีที่ระบุ หรือรหัสรายการซ้ำ');
-  return matches[0].row;
-}
-
-function validateAccount_(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('ข้อมูลบัญชีไม่ถูกต้อง');
-  const required = ['bankName', 'accountName', 'accountNumber', 'owner'];
-  const result = {};
-  for (const [name, limit] of Object.entries(FIELDS)) {
-    const raw = input[name] ?? '';
-    if (typeof raw !== 'string') throw new Error('ข้อมูลบัญชีต้องเป็นข้อความ');
-    const value = raw.trim();
-    if (value.length > limit || (required.includes(name) && !value)) throw new Error('กรุณาตรวจสอบช่องที่จำเป็นและความยาวของข้อมูล');
-    result[name] = value;
+function validateFamilyBankAccount_(raw, generateId) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) failFamilyBank_('VALIDATION_ERROR', 'ข้อมูลบัญชีไม่ถูกต้อง');
+  const account = {};
+  const limits = { nickname: 100, owner: 120, number: 40, branch: 100, note: 500 };
+  Object.keys(limits).forEach(function (key) {
+    const value = raw[key] === undefined && (key === 'branch' || key === 'note') ? '' : raw[key];
+    if (typeof value !== 'string' || value.length > limits[key]) failFamilyBank_('VALIDATION_ERROR', 'กรุณาตรวจข้อมูลช่อง ' + key);
+    account[key] = value.trim();
+  });
+  account.number = account.number.replace(/[\s-]/g, '');
+  if (!account.nickname || !account.owner || !/^\d{6,20}$/.test(account.number)) failFamilyBank_('VALIDATION_ERROR', 'ต้องระบุชื่อเรียก เจ้าของบัญชี และเลขบัญชี 6–20 หลัก โดยส่งเลขบัญชีเป็นข้อความ');
+  if (FAMILY_BANK.banks.indexOf(raw.bank) < 0 || FAMILY_BANK.types.indexOf(raw.type) < 0 || FAMILY_BANK.categories.indexOf(raw.category) < 0 || ['active', 'inactive'].indexOf(raw.status) < 0 || typeof raw.favorite !== 'boolean') {
+    failFamilyBank_('VALIDATION_ERROR', 'กรุณาตรวจธนาคาร ประเภท หมวดหมู่ สถานะ และ favorite');
   }
-  if (!/^[0-9 -]+$/.test(result.accountNumber) || result.accountNumber.replace(/\D/g, '').length < 6) {
-    throw new Error('เลขบัญชีต้องมีตัวเลขอย่างน้อย 6 หลัก ใช้ช่องว่างหรือขีดได้');
-  }
-  if (!['พ่อ', 'แม่', 'ลูกชาย', 'ลูกสาว'].includes(result.owner)) throw new Error('เจ้าของบัญชีไม่ถูกต้อง');
-  return result;
+  const accountId = raw.id === undefined && generateId ? Utilities.getUuid() : raw.id;
+  if (typeof accountId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(accountId)) failFamilyBank_('VALIDATION_ERROR', 'id ต้องเป็นข้อความ 1–100 ตัว ใช้ตัวอักษรภาษาอังกฤษ ตัวเลข ขีดกลาง หรือขีดล่าง');
+  return Object.assign(account, { id: accountId, bank: raw.bank, type: raw.type, category: raw.category, status: raw.status, favorite: raw.favorite });
 }
 
-function writeAccount_(sheet, row, account) {
-  // RAW preserves leading zeros and treats values beginning with "=" as text.
+function saveFamilyBankAccount_(sheet, raw, expectedUpdatedAt) {
+  const account = validateFamilyBankAccount_(raw, true);
+  const accounts = readFamilyBankAccounts_(sheet);
+  const existing = accounts.find(function (item) { return item.id === account.id; });
+  if (accounts.some(function (item) { return item.id !== account.id && item.bank === account.bank && item.number === account.number; })) failFamilyBank_('DUPLICATE_ACCOUNT', 'มีเลขบัญชีนี้ในธนาคารที่เลือกแล้ว');
+  if (existing) {
+    if (typeof expectedUpdatedAt !== 'string' || expectedUpdatedAt !== existing.updatedAt) failFamilyBank_('CONFLICT', 'ข้อมูลเปลี่ยนแปลงแล้ว กรุณาโหลดข้อมูลล่าสุดก่อนแก้ไข');
+  } else {
+    if (expectedUpdatedAt !== undefined && expectedUpdatedAt !== null && expectedUpdatedAt !== '') failFamilyBank_('NOT_FOUND', 'ไม่พบบัญชีเดิม กรุณาโหลดข้อมูลล่าสุด');
+    if (accounts.length >= FAMILY_BANK.maxAccounts || sheet.getLastRow() >= FAMILY_BANK.maxAccounts + 1) failFamilyBank_('LIMIT_EXCEEDED', 'เพิ่มได้สูงสุด 10,000 บัญชี');
+  }
+  const now = nextFamilyBankTimestamp_(existing && existing.updatedAt);
+  const saved = Object.assign(account, { createdAt: existing ? existing.createdAt : now, updatedAt: now });
+  writeFamilyBankRows_(sheet, existing ? existing._row : sheet.getLastRow() + 1, [saved]);
+  return { account: saved, created: !existing };
+}
+
+function setFamilyBankFavorite_(sheet, request) {
+  if (typeof request.favorite !== 'boolean') failFamilyBank_('VALIDATION_ERROR', 'favorite ต้องเป็น true หรือ false');
+  const existing = readFamilyBankAccounts_(sheet).find(function (account) { return account.id === request.id; });
+  if (!existing) failFamilyBank_('NOT_FOUND', 'ไม่พบบัญชี');
+  return saveFamilyBankAccount_(sheet, Object.assign({}, existing, { favorite: request.favorite }), request.expectedUpdatedAt);
+}
+
+/** Deletes exactly one row under the script lock, checking the current account version. */
+function deleteFamilyBankAccount_(sheet, request) {
+  if (typeof request.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(request.id)) failFamilyBank_('VALIDATION_ERROR', 'กรุณาระบุ ID บัญชีที่ต้องการลบ');
+  const account = readFamilyBankAccounts_(sheet).find(function (item) { return item.id === request.id; });
+  if (!account) failFamilyBank_('NOT_FOUND', 'ไม่พบบัญชีที่ต้องการลบ กรุณาโหลดข้อมูลล่าสุด');
+  if (typeof request.expectedUpdatedAt !== 'string' || request.expectedUpdatedAt !== account.updatedAt) failFamilyBank_('CONFLICT', 'บัญชีนี้ถูกแก้ไขแล้ว กรุณาโหลดข้อมูลล่าสุดและตรวจสอบก่อนลบ');
+  sheet.deleteRow(account._row);
   SpreadsheetApp.flush();
-  Sheets.Spreadsheets.Values.update(
-    { values: [HEADERS.map(name => account[name])] },
-    sheet.getParent().getId(),
-    `'${SHEET_NAME}'!A${row}:I${row}`,
-    { valueInputOption: 'RAW' }
-  );
+  return { id: account.id, deleted: true };
 }
 
-function withLock_(operation) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    const result = operation();
-    SpreadsheetApp.flush();
-    return result;
-  } finally {
-    lock.releaseLock();
-  }
+/** Append-only import: validates the whole backup before writing, skips bank+number duplicates. */
+function importFamilyBankAccounts_(sheet, backup) {
+  if (!backup || backup.version !== 1 || !Array.isArray(backup.accounts) || backup.accounts.length > FAMILY_BANK.maxAccounts) failFamilyBank_('VALIDATION_ERROR', 'ต้องใช้ไฟล์สำรอง version 1 จาก Family Bank');
+  const incoming = backup.accounts.map(function (account) { return validateFamilyBankAccount_(account, true); });
+  const existing = readFamilyBankAccounts_(sheet);
+  const seen = new Set(existing.map(function (account) { return account.bank + ':' + account.number; }));
+  const added = [];
+  incoming.forEach(function (account) {
+    const key = account.bank + ':' + account.number;
+    if (seen.has(key)) return;
+    seen.add(key);
+    // Always generate new IDs for imports so an imported ID cannot overwrite another account.
+    added.push(Object.assign({}, account, { id: Utilities.getUuid(), createdAt: nextFamilyBankTimestamp_(), updatedAt: nextFamilyBankTimestamp_() }));
+  });
+  if (sheet.getLastRow() + added.length > FAMILY_BANK.maxAccounts + 1) failFamilyBank_('LIMIT_EXCEEDED', 'จำนวนบัญชีหลังนำเข้าจะเกิน 10,000 แถว');
+  if (added.length) writeFamilyBankRows_(sheet, sheet.getLastRow() + 1, added);
+  return { imported: added.length, skipped: incoming.length - added.length };
 }
 
+function nextFamilyBankTimestamp_(previous) {
+  const parsed = previous ? Date.parse(previous) : NaN;
+  return new Date(Math.max(Date.now(), Number.isFinite(parsed) ? parsed + 1 : 0)).toISOString();
+}
+
+function ensureFamilyBankGrid_(sheet, lastRow) {
+  if (sheet.getMaxColumns() < FAMILY_BANK.headers.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), FAMILY_BANK.headers.length - sheet.getMaxColumns());
+  if (sheet.getMaxRows() < lastRow) sheet.insertRowsAfter(sheet.getMaxRows(), lastRow - sheet.getMaxRows());
+}
+
+function writeFamilyBankRows_(sheet, firstRow, accounts) {
+  ensureFamilyBankGrid_(sheet, firstRow + accounts.length - 1);
+  const range = sheet.getRange(firstRow, 1, accounts.length, FAMILY_BANK.headers.length);
+  // RichTextValue writes literal text, including leading '='. No sheet formula is executed.
+  const rows = accounts.map(function (account) {
+    return FAMILY_BANK.headers.map(function (key) {
+      return SpreadsheetApp.newRichTextValue().setText(String(account[key])).build();
+    });
+  });
+  range.setNumberFormat('@');
+  range.setRichTextValues(rows);
+  SpreadsheetApp.flush();
+}
+
+function familyBankJson_(value) {
+  // Never expose internal physical row numbers to clients.
+  const json = JSON.stringify(value, function (key, item) { return key === '_row' ? undefined : item; });
+  return ContentService.createTextOutput(json).setMimeType(ContentService.MimeType.JSON);
+}
+
+function failFamilyBank_(code, message) {
+  const error = new Error(message);
+  error.familyBankCode = code;
+  throw error;
+}
