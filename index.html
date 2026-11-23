@@ -382,16 +382,19 @@ body [hidden] { display: none !important; }
 #pageInfo{font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
 @media(max-width:500px){#pagination.pagination{justify-content:center;gap:8px}#pagination button{padding-inline:12px}#pageInfo{font-size:13px}}
 .reset-filter{grid-column:1/-1;justify-self:end;min-height:44px;padding:9px 14px}.reset-filter .icon,#resetAccountForm .icon{width:17px;height:17px}#resetAccountForm{margin-right:auto}#accountForm .form-foot{flex-wrap:wrap}@media(min-width:1351px){.filters{grid-template-columns:minmax(220px,1.8fr) repeat(3,minmax(0,1fr)) auto}.reset-filter{grid-column:auto;align-self:stretch}}@media(max-width:500px){.reset-filter{justify-self:stretch}#accountForm #resetAccountForm{flex-basis:100%;margin-right:0}}
+.local.is-loading::before{content:'';width:13px;height:13px;flex-shrink:0;border:2px solid rgba(20,106,104,.22);border-top-color:#146a68;border-radius:50%;animation:connection-spin .8s linear infinite}#reloadAccounts{flex-shrink:0;min-height:44px}@keyframes connection-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.local.is-loading::before{animation:none}}
+/* Full-width workspace with the Admin entry in the top-right toolbar. */
+.shell{display:block;min-height:100vh}.content{max-width:none;width:100%;margin:0;padding:24px clamp(16px,2.2vw,40px) 32px}
+.heading{display:flex;align-items:center;flex-direction:row;flex-wrap:wrap;gap:16px}.header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-left:auto}.header-actions button{min-height:44px}.header-actions button.active{background:var(--light);color:var(--green)}
+@media(max-width:640px){.content{padding:16px}.heading>div:first-child{flex-basis:100%}.header-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%;gap:8px}.header-actions button{width:100%;min-width:0;margin:0}.header-actions #addBtn{grid-column:1/-1}.header-actions #adminExit{font-size:14px}}
 </style>
 </head>
 <body>
 <div class="shell">
-<aside><div class="brand"><span class="brandmark" data-icon="bank"></span><div><b>Family Bank<span style="color:#70b49c">.</span></b></div></div>
-<nav aria-label="เมนูหลัก"><button data-view="accounts" class="active"><span data-icon="wallet"></span>บัญชีธนาคาร</button><button data-view="admin"><span data-icon="shield"></span>Admin</button></nav>
-</aside>
-<main class="content"><div class="topline"><span class="local" id="dataSourceBadge"><span data-icon="shield"></span>บันทึกบนอุปกรณ์นี้</span></div>
+
+<main class="content"><div class="topline"><span class="local" id="dataSourceBadge" role="status" aria-live="polite"><span data-icon="shield"></span>บันทึกบนอุปกรณ์นี้</span></div>
 <div id="storageWarning" class="banner" role="alert" hidden></div>
-<div class="heading"><div><h1 id="pageTitle">บัญชีธนาคาร</h1></div><button id="adminExit" class="text-btn" hidden><span data-icon="shield"></span>ล็อกหน้า Admin</button><button class="primary" id="addBtn"><span data-icon="plus"></span>เพิ่มบัญชีใหม่</button></div>
+<div class="heading"><div><h1 id="pageTitle">Family Bank Manager</h1></div><div class="header-actions"><button id="reloadAccounts" type="button" class="text-btn" aria-label="โหลดข้อมูลล่าสุด" title="โหลดข้อมูลล่าสุด"><span data-icon="reset"></span>รีเฟรช</button><button id="adminEntry" type="button" data-view="admin"><span data-icon="shield"></span>Admin</button><button id="adminExit" class="text-btn" hidden><span data-icon="shield"></span>ล็อกหน้า Admin</button><button class="primary" id="addBtn"><span data-icon="plus"></span>เพิ่มบัญชีใหม่</button></div></div>
 <section id="listView">
 
 <div class="section-head"><h2 id="listTitle">บัญชีของคุณ</h2><small id="resultCount" aria-live="polite"></small></div>
@@ -405,7 +408,7 @@ body [hidden] { display: none !important; }
 <dialog id="accountDialog" aria-labelledby="dialogTitle"><div class="modal-head"><h2 id="dialogTitle">เพิ่มบัญชีใหม่</h2><button type="button" class="text-btn" id="closeDialog" aria-label="ปิดหน้าต่าง"><span data-icon="close"></span></button></div>
 <form id="accountForm"><div class="fields">
 <div class="field full"><label for="nickname">ชื่อเรียกบัญชี *</label><input id="nickname" name="nickname" required maxlength="100" placeholder="เช่น บัญชีค่าใช้จ่ายบ้าน"></div>
-<div class="field"><label for="bank">ธนาคาร *</label><select id="bank" name="bank" required></select></div><div class="field"><label for="number">เลขบัญชี *</label><input id="number" name="number" required inputmode="numeric" pattern="[0-9\s-]{6,40}" maxlength="40" placeholder="เลขบัญชี ใช้ขีดหรือเว้นวรรคได้"><small class="muted" style="font-size:12px">เก็บเลข 0 ด้านหน้าไว้ครบถ้วน</small></div>
+<div class="field"><label for="bank">ธนาคาร *</label><select id="bank" name="bank" required></select></div><div class="field"><label for="number">เลขบัญชี *</label><input id="number" name="number" required inputmode="numeric" pattern="[0-9\s\-]{6,40}" maxlength="40" placeholder="เลขบัญชี ใช้ขีดหรือเว้นวรรคได้"><small class="muted" style="font-size:12px">เก็บเลข 0 ด้านหน้าไว้ครบถ้วน</small></div>
 <div class="field full"><label for="owner">ชื่อเจ้าของบัญชี *</label><input id="owner" name="owner" required maxlength="120" placeholder="ชื่อตามบัญชีธนาคาร" list="ownerSuggestions"><datalist id="ownerSuggestions"></datalist></div>
 <div class="field"><label for="type">ประเภทบัญชี</label><select id="type" name="type"><option>ออมทรัพย์</option><option>กระแสรายวัน</option><option>ฝากประจำ</option><option>อื่น ๆ</option></select></div><div class="field"><label for="category">หมวดหมู่</label><select id="category" name="category"><option>พ่อ</option><option>แม่</option><option>ลูกชาย</option><option>ลูกสาว</option></select></div>
 <div class="field"><label for="branch">สาขา</label><input id="branch" name="branch" maxlength="100" placeholder="ไม่บังคับ"></div><div class="field"><label for="status">สถานะ</label><select id="status" name="status"><option value="active">ใช้งาน</option><option value="inactive">ปิดใช้งาน</option></select></div>
@@ -429,9 +432,10 @@ const ACCOUNT_CATEGORIES=['พ่อ','แม่','ลูกชาย','ลู�
 const LEGACY_CATEGORIES=['ส่วนตัว','ครอบครัว','ธุรกิจ','อื่น ๆ'];
 const defaults=()=>({version:1,accounts:[],settings:{mask:false,includeBranch:false}});
 let state=defaults(),view='accounts',editing=null,timer,storageBlocked=false;
-const PAGE_SIZE=5;
+const PAGE_SIZE=10;
 let currentPage=1,lastPaginationKey='';
 let formOriginal=null;
+let networkLabel='กำลังโหลด…';
 let localState,cloudMode=true,cloudReady=false,networkBusy=false,editingVersion=null,pendingDelete=null;
 let connectionMessage='กำลังเชื่อมต่อ Google Sheets…';
 let adminUnlocked=false;
@@ -456,7 +460,7 @@ function commit(next,restore=false){
 function copyText(a){return `ธนาคาร${bankOf(a)[1]}\nชื่อบัญชี: ${a.owner}\nเลขบัญชี: ${a.number}${state.settings.includeBranch&&a.branch?'\nสาขา: '+a.branch:''}`;}
 async function copy(value){try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(value);}else{const field=document.createElement('textarea');field.value=value;field.style.position='fixed';field.style.opacity='0';document.body.append(field);field.select();let ok;try{ok=document.execCommand('copy');}finally{field.remove();}if(!ok)throw Error('copy');}toast('คัดลอกแล้ว');}catch(e){$('manualCopy').value=value;$('copyDialog').showModal();$('manualCopy').focus();$('manualCopy').select();}}
 function options(select,values,placeholder){const current=select.value;select.innerHTML=`<option value="">${placeholder}</option>`+values.map(([value,label])=>`<option value="${esc(value)}">${esc(label)}</option>`).join('');select.value=values.some(v=>v[0]===current)?current:'';}
-function render(){options($('bankFilter'),BANKS.filter(b=>state.accounts.some(a=>a.bank===b[0])).map(b=>[b[0],b[1]]),'ทุกธนาคาร');options($('categoryFilter'),[...ACCOUNT_CATEGORIES,...LEGACY_CATEGORIES.filter(c=>state.accounts.some(a=>a.category===c))].map(c=>[c,LEGACY_CATEGORIES.includes(c)?'หมวดหมู่เดิม: '+c:c]),'ทุกหมวดหมู่');$('ownerSuggestions').innerHTML=[...new Set(state.accounts.map(a=>a.owner))].map(o=>`<option value="${esc(o)}"></option>`).join('');$('listView').hidden=false;$('addBtn').hidden=false;$('pageTitle').textContent={accounts:'บัญชีธนาคาร',admin:'จัดการบัญชี · Admin'}[view];$('listTitle').textContent=isAdminPage()?'จัดการรายการบัญชี':'รายการบัญชี';$('adminExit').hidden=!isAdminPage();document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===view);if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('maskSetting').checked=state.settings.mask;$('branchSetting').checked=state.settings.includeBranch;$('copyPreview').textContent=copyText({bank:'kbank',owner:'ชื่อเจ้าของบัญชี',number:'0000000000',branch:'ชื่อสาขา'});renderCards();}
+function render(){options($('bankFilter'),BANKS.filter(b=>state.accounts.some(a=>a.bank===b[0])).map(b=>[b[0],b[1]]),'ทุกธนาคาร');options($('categoryFilter'),[...ACCOUNT_CATEGORIES,...LEGACY_CATEGORIES.filter(c=>state.accounts.some(a=>a.category===c))].map(c=>[c,LEGACY_CATEGORIES.includes(c)?'หมวดหมู่เดิม: '+c:c]),'ทุกหมวดหมู่');$('ownerSuggestions').innerHTML=[...new Set(state.accounts.map(a=>a.owner))].map(o=>`<option value="${esc(o)}"></option>`).join('');$('listView').hidden=false;$('addBtn').hidden=false;$('pageTitle').textContent={accounts:'Family Bank Manager',admin:'จัดการบัญชี · Admin'}[view];$('listTitle').textContent=isAdminPage()?'จัดการรายการบัญชี':'รายการบัญชี';$('adminExit').hidden=!isAdminPage();$('adminEntry').hidden=isAdminPage();document.querySelectorAll('[data-view]').forEach(b=>{b.classList.toggle('active',b.dataset.view===view);if(b.dataset.view===view)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});$('maskSetting').checked=state.settings.mask;$('branchSetting').checked=state.settings.includeBranch;$('copyPreview').textContent=copyText({bank:'kbank',owner:'ชื่อเจ้าของบัญชี',number:'0000000000',branch:'ชื่อสาขา'});renderCards();}
 function renderCards(){const q=$('search').value.trim().toLocaleLowerCase('th');const compact=digits(q);let rows=state.accounts.filter(a=>{const mode=$('statusFilter').value;return (!$('bankFilter').value||a.bank===$('bankFilter').value)&&(!$('categoryFilter').value||a.category===$('categoryFilter').value)&&(mode==='all'||(mode==='favorite'?a.favorite&&a.status==='active':a.status===mode))&&(!q||[a.nickname,a.owner,bankOf(a)[1],a.note,a.category].some(s=>s.toLocaleLowerCase('th').includes(q))||(compact&&a.number.includes(compact)));});rows.sort((a,b)=>Number(b.favorite)-Number(a.favorite)||a.nickname.localeCompare(b.nickname,'th'));const paginationKey=JSON.stringify([view,q,$('bankFilter').value,$('categoryFilter').value,$('statusFilter').value]);
 if(paginationKey!==lastPaginationKey){currentPage=1;lastPaginationKey=paginationKey;}
 const pageCount=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));
@@ -482,10 +486,12 @@ function openForm(a){
 }
 
 function cloudControls(){
-  $('dataSourceBadge').textContent=cloudMode?(cloudReady?'Google Sheets':'ยังไม่เชื่อมต่อ Sheet'):'ข้อมูลบนอุปกรณ์นี้';
+  $('dataSourceBadge').textContent=networkBusy?networkLabel:cloudMode?(cloudReady?'Google Sheets':'ยังไม่เชื่อมต่อ Sheet'):'ข้อมูลบนอุปกรณ์นี้';$('dataSourceBadge').classList.toggle('is-loading',networkBusy);$('reloadAccounts').disabled=networkBusy;
   $('connectionStatus').textContent=connectionMessage;
   const blocked=networkBusy||(cloudMode&&!cloudReady);
   $('addBtn').disabled=blocked;$('accountForm').querySelector('[type="submit"]').disabled=blocked;
+  $('accountForm').querySelectorAll('input,select,textarea').forEach(field=>field.disabled=networkBusy);
+  $('accountForm').querySelector('[type="submit"]').textContent=networkBusy?'กำลังบันทึก…':'บันทึกบัญชี';
   $('importBtn').disabled=blocked;$('refreshCloud').disabled=networkBusy;
   $('useLocal').disabled=networkBusy||!cloudMode;
   $('migrateLocal').disabled=networkBusy||!cloudMode||!cloudReady||storageBlocked||!localState.accounts.length;
@@ -505,7 +511,7 @@ async function apiRequest(action,payload={}){
   }catch(error){if(error.name==='AbortError')throw Error('หมดเวลารอ Apps Script กรุณาโหลดข้อมูลจาก Sheet เพื่อตรวจสอบก่อนลองบันทึกใหม่');if(error instanceof TypeError)throw Error('ติดต่อ Apps Script ไม่ได้ กรุณาตรวจอินเทอร์เน็ตและสิทธิ์เข้าถึง Web app');throw error;}
   finally{clearTimeout(timeout);}
 }
-function validatedRemoteAccount(raw){const a=validateRecord(raw);if(!a.id||typeof raw.updatedAt!=='string'||!Number.isFinite(Date.parse(raw.updatedAt))||typeof raw.createdAt!=='string')throw Error('ข้อมูลเวอร์ชันบัญชีจาก Sheet ไม่ถูกต้อง');return {...a,createdAt:raw.createdAt,updatedAt:raw.updatedAt};}
+function validatedRemoteAccount(raw){const a=validateRecord(raw);if(!a.id||typeof raw.updatedAt!=='string'||!Number.isFinite(Date.parse(raw.updatedAt))||typeof raw.createdAt!=='string'||!Number.isFinite(Date.parse(raw.createdAt)))throw Error('ข้อมูลเวอร์ชันบัญชีจาก Sheet ไม่ถูกต้อง');return {...a,createdAt:raw.createdAt,updatedAt:raw.updatedAt};}
 async function fetchCloudState(){
   const data=await apiRequest('list');validateData({...data,settings:state.settings});
   const accounts=data.accounts.map(validatedRemoteAccount);if(new Set(accounts.map(a=>a.id)).size!==accounts.length)throw Error('พบ ID บัญชีซ้ำใน Sheet');
@@ -513,19 +519,19 @@ async function fetchCloudState(){
 }
 async function connectCloud(){
   if(networkBusy||$('accountDialog').open||$('deleteDialog').open)return;
-  networkBusy=true;connectionMessage='กำลังโหลดข้อมูลจาก Google Sheets…';cloudControls();
+  networkLabel='กำลังโหลด…';networkBusy=true;connectionMessage='กำลังโหลดข้อมูลจาก Google Sheets…';cloudControls();
   try{const next=await fetchCloudState();state=next;cloudMode=true;cloudReady=true;connectionMessage='เชื่อมต่อ Google Sheets แล้ว • '+state.accounts.length+' บัญชี';$('storageWarning').hidden=!storageBlocked;render();}
   catch(error){connectionMessage=error.message;if(cloudMode)cloudReady=false;$('storageWarning').hidden=false;$('storageWarning').textContent=error.message+' ข้อมูลเดิมยังอยู่ กรุณารีเฟรชหน้าเว็บเพื่อลองเชื่อมต่ออีกครั้ง';}
   finally{networkBusy=false;cloudControls();}
 }
 function markCloudUncertain(error){cloudReady=false;connectionMessage=error.message+' กรุณารีเฟรชหน้าเว็บก่อนบันทึกต่อ';$('storageWarning').hidden=false;$('storageWarning').textContent=connectionMessage;cloudControls();}
 async function cloudWrite(action,payload){
-  if(!canMutate())return null;networkBusy=true;cloudControls();
+  if(!canMutate())return null;networkLabel=action==='deleteAccount'?'กำลังลบ…':action==='setFavorite'?'กำลังอัปเดต…':'กำลังบันทึก…';networkBusy=true;cloudControls();
   try{return await apiRequest(action,payload);}catch(error){markCloudUncertain(error);throw error;}
   finally{networkBusy=false;cloudControls();}
 }
-function applySavedAccount(data){
-  let account;try{account=validatedRemoteAccount(data.account);}catch(error){markCloudUncertain(error);throw error;}
+function applySavedAccount(data,expectedId){
+  let account;try{account=validatedRemoteAccount(data.account);if(expectedId&&account.id!==expectedId)throw Error('ผลบันทึกไม่ตรงกับบัญชีที่ส่ง กรุณาโหลดข้อมูลล่าสุด');}catch(error){markCloudUncertain(error);throw error;}
   state={...state,accounts:state.accounts.some(a=>a.id===account.id)?state.accounts.map(a=>a.id===account.id?account:a):[...state.accounts,account]};
   connectionMessage='เชื่อมต่อ Google Sheets แล้ว • '+state.accounts.length+' บัญชี';render();
 }
@@ -553,7 +559,7 @@ $('accountForm').addEventListener('submit',async e=>{
   try{
     const a=validateRecord({...Object.fromEntries(new FormData(e.target)),id:editing||id(),favorite:$('favorite').checked});
     if(state.accounts.some(x=>x.id!==editing&&x.bank===a.bank&&x.number===a.number))throw Error('มีเลขบัญชีนี้ในธนาคารที่เลือกแล้ว');
-    if(cloudMode){const result=await cloudWrite('saveAccount',{account:a,...(editing?{expectedUpdatedAt:editingVersion}:{})});if(!result)return;applySavedAccount(result);}
+    if(cloudMode){const result=await cloudWrite('saveAccount',{account:a,...(editing?{expectedUpdatedAt:editingVersion}:{})});if(!result)return;applySavedAccount(result,a.id);}
     else if(!commit({...state,accounts:editing?state.accounts.map(x=>x.id===editing?a:x):[...state.accounts,a]}))throw Error('บันทึกบนอุปกรณ์ไม่สำเร็จ ข้อมูลในแบบฟอร์มยังอยู่');
     $('accountDialog').close();render();toast(cloudMode?'บันทึกลง Google Sheets แล้ว':'บันทึกบนอุปกรณ์แล้ว');
   }catch(error){$('formError').textContent=error.message;}
@@ -562,7 +568,7 @@ $('cards').addEventListener('click',async e=>{
   const button=e.target.closest('button[data-action]');if(!button)return;const a=state.accounts.find(x=>x.id===button.dataset.id);if(!a)return;
   switch(button.dataset.action){
     case 'number':copy(a.number);break;case 'all':copy(copyText(a));break;case 'edit':openForm(a);break;case 'delete':openDelete(a);break;
-    case 'favorite':if(!canMutate())return;try{if(cloudMode){const result=await cloudWrite('setFavorite',{id:a.id,favorite:!a.favorite,expectedUpdatedAt:a.updatedAt});if(result)applySavedAccount(result);}else if(commit({...state,accounts:state.accounts.map(x=>x.id===a.id?{...x,favorite:!x.favorite}:x)}))render();}catch(error){toast(error.message);}break;
+    case 'favorite':if(!canMutate())return;try{if(cloudMode){const result=await cloudWrite('setFavorite',{id:a.id,favorite:!a.favorite,expectedUpdatedAt:a.updatedAt});if(result)applySavedAccount(result,a.id);}else if(commit({...state,accounts:state.accounts.map(x=>x.id===a.id?{...x,favorite:!x.favorite}:x)}))render();}catch(error){toast(error.message);}break;
   }
 });
 $('adminForm').addEventListener('submit',e=>{
@@ -600,6 +606,7 @@ $('importFile').onchange=async e=>{
   }catch(error){$('importResult').textContent='นำเข้าไม่สำเร็จ: '+error.message;}finally{e.target.value='';}
 };
 $('refreshCloud').onclick=()=>connectCloud();
+$('reloadAccounts').onclick=()=>connectCloud();
 $('useLocal').onclick=()=>{
   if(networkBusy||$('accountDialog').open||$('deleteDialog').open)return;
   cloudMode=false;cloudReady=false;state=structuredClone(localState);connectionMessage='ใช้ข้อมูลบนอุปกรณ์นี้ การบันทึกจะไม่ส่งไป Google Sheets';$('storageWarning').hidden=!storageBlocked;render();toast('เปลี่ยนเป็นข้อมูลบนอุปกรณ์แล้ว');

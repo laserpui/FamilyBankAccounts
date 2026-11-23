@@ -7,6 +7,7 @@
  * All account operations use POST; GET exposes health information only.
  */
 const FAMILY_BANK = Object.freeze({
+  build: '2026-11-23.audit1',
   sheetName: 'FamilyBank_Accounts',
   idProperty: 'FAMILY_BANK_SPREADSHEET_ID',
   maxAccounts: 10000,
@@ -18,7 +19,7 @@ const FAMILY_BANK = Object.freeze({
   categories: ['พ่อ', 'แม่', 'ลูกชาย', 'ลูกสาว', 'ส่วนตัว', 'ครอบครัว', 'ธุรกิจ', 'อื่น ๆ']
 });
 
-/** Run from the editor; setup never deletes existing rows or rotates an existing key. */
+/** Run from the editor; setup never deletes existing rows. */
 function setupFamilyBank() {
   return withFamilyBankLock_(function () {
     const props = PropertiesService.getScriptProperties();
@@ -45,11 +46,12 @@ function setupFamilyBank() {
 
 /** Public health endpoint: never exposes accounts, spreadsheet ID or API key. */
 function doGet() {
-  return familyBankJson_({ ok: true, service: 'Family Bank Manager', apiVersion: 1, message: 'Use POST with action for account operations. No API key is required.' });
+  return familyBankJson_({ ok: true, service: 'Family Bank Manager', apiVersion: 1, build: FAMILY_BANK.build, message: 'Use POST with action for account operations. No API key is required.' });
 }
 
 /** JSON or text/plain containing JSON. No API key is required. */
 function doPost(e) {
+  const startedAt = Date.now();
   try {
     const raw = e && e.postData && e.postData.contents;
     if (typeof raw !== 'string' || !raw.length) failFamilyBank_('INVALID_REQUEST', 'ต้องส่ง JSON ใน request body');
@@ -68,7 +70,7 @@ function doPost(e) {
         default: failFamilyBank_('UNKNOWN_ACTION', 'รองรับ list, saveAccount, setFavorite, deleteAccount และ importAccounts');
       }
     });
-    return familyBankJson_({ ok: true, data: data });
+    return familyBankJson_({ ok: true, data: data, meta: { build: FAMILY_BANK.build, serverMs: Date.now() - startedAt } });
   } catch (error) {
     // Never log request bodies or return internal exceptions containing financial data.
     return familyBankJson_({ ok: false, error: { code: error.familyBankCode || 'INTERNAL_ERROR', message: error.familyBankCode ? error.message : 'ระบบทำรายการไม่สำเร็จ กรุณาตรวจการตั้งค่าและสิทธิ์ของ Apps Script' } });
@@ -86,23 +88,25 @@ function getFamilyBankSheet_() {
   if (!spreadsheetId) failFamilyBank_('NOT_CONFIGURED', 'กรุณารัน setupFamilyBank() ก่อน');
   const sheet = SpreadsheetApp.openById(spreadsheetId).getSheetByName(FAMILY_BANK.sheetName);
   if (!sheet) failFamilyBank_('NOT_CONFIGURED', 'ไม่พบชีตบัญชี กรุณารัน setupFamilyBank()');
-  assertFamilyBankHeaders_(sheet);
   return sheet;
 }
 
-function assertFamilyBankHeaders_(sheet) {
-  if (sheet.getMaxColumns() < FAMILY_BANK.headers.length) failFamilyBank_('SCHEMA_MISMATCH', 'คอลัมน์ชีตไม่ตรงกับระบบ ระบบไม่ได้แก้ไขข้อมูลเดิม');
-  const actual = sheet.getRange(1, 1, 1, FAMILY_BANK.headers.length).getDisplayValues()[0];
+function assertFamilyBankHeaders_(sheet, suppliedHeader) {
+  if (!suppliedHeader && sheet.getMaxColumns() < FAMILY_BANK.headers.length) failFamilyBank_('SCHEMA_MISMATCH', 'คอลัมน์ชีตไม่ตรงกับระบบ ระบบไม่ได้แก้ไขข้อมูลเดิม');
+  const actual = suppliedHeader || sheet.getRange(1, 1, 1, FAMILY_BANK.headers.length).getDisplayValues()[0];
   if (actual.some(function (value, index) { return value !== FAMILY_BANK.headers[index]; })) {
     failFamilyBank_('SCHEMA_MISMATCH', 'หัวตารางของ FamilyBank_Accounts ไม่ตรงกับระบบ กรุณาตรวจสอบโดยไม่ลบข้อมูลเดิม');
   }
 }
 
 function readFamilyBankAccounts_(sheet) {
-  const count = sheet.getLastRow() - 1;
-  if (count <= 0) return [];
-  if (count > FAMILY_BANK.maxAccounts) failFamilyBank_('LIMIT_EXCEEDED', 'จำนวนแถวเกิน 10,000 บัญชี');
-  const rows = sheet.getRange(2, 1, count, FAMILY_BANK.headers.length).getDisplayValues();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 1 || sheet.getMaxColumns() < FAMILY_BANK.headers.length) failFamilyBank_('SCHEMA_MISMATCH', 'หัวตารางบัญชีไม่ครบ กรุณาตรวจการตั้งค่า');
+  if (lastRow - 1 > FAMILY_BANK.maxAccounts) failFamilyBank_('LIMIT_EXCEEDED', 'จำนวนแถวเกิน 10,000 บัญชี');
+  // Read headers and account data together, rather than two separate Sheet round trips.
+  const matrix = sheet.getRange(1, 1, lastRow, FAMILY_BANK.headers.length).getDisplayValues();
+  assertFamilyBankHeaders_(sheet, matrix[0]);
+  const rows = matrix.slice(1);
   const ids = new Set(), pairs = new Set();
   return rows.map(function (row, index) {
     if (row.every(function (value) { return value === ''; })) return null;
@@ -140,9 +144,9 @@ function validateFamilyBankAccount_(raw, generateId) {
   return Object.assign(account, { id: accountId, bank: raw.bank, type: raw.type, category: raw.category, status: raw.status, favorite: raw.favorite });
 }
 
-function saveFamilyBankAccount_(sheet, raw, expectedUpdatedAt) {
+function saveFamilyBankAccount_(sheet, raw, expectedUpdatedAt, knownAccounts) {
   const account = validateFamilyBankAccount_(raw, true);
-  const accounts = readFamilyBankAccounts_(sheet);
+  const accounts = knownAccounts || readFamilyBankAccounts_(sheet);
   const existing = accounts.find(function (item) { return item.id === account.id; });
   if (accounts.some(function (item) { return item.id !== account.id && item.bank === account.bank && item.number === account.number; })) failFamilyBank_('DUPLICATE_ACCOUNT', 'มีเลขบัญชีนี้ในธนาคารที่เลือกแล้ว');
   if (existing) {
@@ -153,15 +157,16 @@ function saveFamilyBankAccount_(sheet, raw, expectedUpdatedAt) {
   }
   const now = nextFamilyBankTimestamp_(existing && existing.updatedAt);
   const saved = Object.assign(account, { createdAt: existing ? existing.createdAt : now, updatedAt: now });
-  writeFamilyBankRows_(sheet, existing ? existing._row : sheet.getLastRow() + 1, [saved]);
+  writeFamilyBankRows_(sheet, existing ? existing._row : sheet.getLastRow() + 1, [saved], !!existing);
   return { account: saved, created: !existing };
 }
 
 function setFamilyBankFavorite_(sheet, request) {
   if (typeof request.favorite !== 'boolean') failFamilyBank_('VALIDATION_ERROR', 'favorite ต้องเป็น true หรือ false');
-  const existing = readFamilyBankAccounts_(sheet).find(function (account) { return account.id === request.id; });
+  const accounts = readFamilyBankAccounts_(sheet);
+  const existing = accounts.find(function (account) { return account.id === request.id; });
   if (!existing) failFamilyBank_('NOT_FOUND', 'ไม่พบบัญชี');
-  return saveFamilyBankAccount_(sheet, Object.assign({}, existing, { favorite: request.favorite }), request.expectedUpdatedAt);
+  return saveFamilyBankAccount_(sheet, Object.assign({}, existing, { favorite: request.favorite }), request.expectedUpdatedAt, accounts);
 }
 
 /** Deletes exactly one row under the script lock, checking the current account version. */
@@ -204,8 +209,8 @@ function ensureFamilyBankGrid_(sheet, lastRow) {
   if (sheet.getMaxRows() < lastRow) sheet.insertRowsAfter(sheet.getMaxRows(), lastRow - sheet.getMaxRows());
 }
 
-function writeFamilyBankRows_(sheet, firstRow, accounts) {
-  ensureFamilyBankGrid_(sheet, firstRow + accounts.length - 1);
+function writeFamilyBankRows_(sheet, firstRow, accounts, existingRows) {
+  if (!existingRows) ensureFamilyBankGrid_(sheet, firstRow + accounts.length - 1);
   const range = sheet.getRange(firstRow, 1, accounts.length, FAMILY_BANK.headers.length);
   // RichTextValue writes literal text, including leading '='. No sheet formula is executed.
   const rows = accounts.map(function (account) {
